@@ -1957,8 +1957,21 @@ else:
     if $CUDA_ENABLED; then
         echo "Attempting FAISS GPU installation..."
         
-        # First attempt: faiss-gpu with specific version constraints
-        if pip install "faiss-gpu>=1.7.2,<1.8.0" --no-cache-dir; then
+        # Detect Python version for FAISS compatibility
+        PYTHON_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+        echo "Detected Python version: $PYTHON_VERSION"
+        
+        # Python 3.12+ requires FAISS 1.8.0+, older Python can use 1.7.x
+        if python3 -c "import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)"; then
+            echo "Python 3.12+ detected - using FAISS GPU 1.8.0+"
+            FAISS_VERSION_CONSTRAINT="faiss-gpu>=1.8.0"
+        else
+            echo "Python <3.12 detected - using FAISS GPU 1.7.2+"
+            FAISS_VERSION_CONSTRAINT="faiss-gpu>=1.7.2,<1.8.0"
+        fi
+        
+        # First attempt: faiss-gpu with Python-version-appropriate constraints
+        if pip install "$FAISS_VERSION_CONSTRAINT" --no-cache-dir; then
             echo "✅ FAISS GPU package installed successfully"
             
             # Safe verification - only check package and API availability

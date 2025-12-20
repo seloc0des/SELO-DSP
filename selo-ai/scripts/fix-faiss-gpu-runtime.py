@@ -168,9 +168,13 @@ def fix_faiss_installation():
             logger.error(f"NumPy installation failed: {result.stderr}")
             return False
         
-        # Step 3: Install FAISS GPU
-        logger.info("🚀 Installing FAISS GPU...")
-        install_cmd = [sys.executable, '-m', 'pip', 'install', 'faiss-gpu>=1.7.2']
+        # Step 3: Install FAISS GPU with Python version-appropriate constraints
+        if sys.version_info >= (3, 12):
+            logger.info("🚀 Installing FAISS GPU 1.8.0+ (Python 3.12+)...")
+            install_cmd = [sys.executable, '-m', 'pip', 'install', 'faiss-gpu>=1.8.0']
+        else:
+            logger.info("🚀 Installing FAISS GPU 1.7.2+ (Python <3.12)...")
+            install_cmd = [sys.executable, '-m', 'pip', 'install', 'faiss-gpu>=1.7.2,<1.8.0']
         result = subprocess.run(install_cmd, capture_output=True, text=True, timeout=300)
         
         if result.returncode != 0:

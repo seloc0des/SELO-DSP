@@ -1522,7 +1522,8 @@ Your decision:"""
                            max_context_items: int = 10,
                            trigger_source: str = "system",
                            turn_id: Optional[str] = None,
-                           additional_context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+                           additional_context: Optional[Dict[str, Any]] = None,
+                           user_name: Optional[str] = None) -> Dict[str, Any]:
         """
         Generate a new reflection based on the provided context.
         
@@ -4478,6 +4479,29 @@ Please regenerate your reflection following these identity constraints strictly.
                     'trait_changes': _ensure_list(result_blob.get('trait_changes')),
                     'metadata': metadata_blob or {},
                 }
+                
+                # Replace [User] placeholder with actual user name if provided
+                if user_name and isinstance(user_name, str):
+                    def _replace_user_placeholder(text: str) -> str:
+                        """Replace [User] and [user] placeholders with actual user name."""
+                        if isinstance(text, str):
+                            return text.replace("[User]", user_name).replace("[user]", user_name)
+                        return text
+                    
+                    # Replace in content field
+                    if payload.get('content'):
+                        payload['content'] = _replace_user_placeholder(payload['content'])
+                    
+                    # Replace in result.content
+                    if isinstance(payload.get('result'), dict) and payload['result'].get('content'):
+                        payload['result']['content'] = _replace_user_placeholder(payload['result']['content'])
+                    
+                    # Replace in themes, insights, and actions arrays
+                    for field in ['themes', 'insights', 'actions']:
+                        if isinstance(payload.get(field), list):
+                            payload[field] = [_replace_user_placeholder(item) if isinstance(item, str) else item 
+                                            for item in payload[field]]
+                
                 # Attach an accurate persona trait snapshot for the specific user in this reflection
                 try:
                     if self.persona_repo:

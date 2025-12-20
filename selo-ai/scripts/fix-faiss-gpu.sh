@@ -45,7 +45,14 @@ if [ $FAISS_STATUS -eq 0 ]; then
     exit 0
 elif [ $FAISS_STATUS -eq 2 ]; then
     echo "Installing faiss-gpu from scratch..."
-    pip install faiss-gpu>=1.7.2
+    # Detect Python version for FAISS compatibility
+    if python3 -c "import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)"; then
+        echo "Python 3.12+ detected - using FAISS GPU 1.8.0+"
+        pip install "faiss-gpu>=1.8.0"
+    else
+        echo "Python <3.12 detected - using FAISS GPU 1.7.2+"
+        pip install "faiss-gpu>=1.7.2,<1.8.0"
+    fi
 else
     echo "Replacing CPU-only FAISS with GPU version..."
     
@@ -53,9 +60,15 @@ else
     echo "--- Removing CPU-only FAISS package ---"
     pip uninstall -y faiss || true
     
-    # Install GPU version
+    # Install GPU version with Python version detection
     echo "--- Installing FAISS GPU package ---"
-    pip install faiss-gpu>=1.7.2
+    if python3 -c "import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)"; then
+        echo "Python 3.12+ detected - using FAISS GPU 1.8.0+"
+        pip install "faiss-gpu>=1.8.0"
+    else
+        echo "Python <3.12 detected - using FAISS GPU 1.7.2+"
+        pip install "faiss-gpu>=1.7.2,<1.8.0"
+    fi
 fi
 
 # Verify installation

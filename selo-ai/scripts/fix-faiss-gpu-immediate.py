@@ -51,9 +51,16 @@ def fix_faiss_installation():
     if not run_command('pip install "numpy>=1.24.0,<2.0.0"'):
         return False
     
-    # Install FAISS GPU
-    print("Installing FAISS GPU...")
-    if not run_command("pip install faiss-gpu>=1.7.2"):
+    # Install FAISS GPU with Python version-appropriate constraints
+    import sys
+    if sys.version_info >= (3, 12):
+        print("Installing FAISS GPU 1.8.0+ (Python 3.12+)...")
+        faiss_cmd = "pip install faiss-gpu>=1.8.0"
+    else:
+        print("Installing FAISS GPU 1.7.2+ (Python <3.12)...")
+        faiss_cmd = "pip install faiss-gpu>=1.7.2,<1.8.0"
+    
+    if not run_command(faiss_cmd):
         print("FAISS GPU installation failed, trying CPU version...")
         if not run_command("pip install faiss-cpu>=1.7.2"):
             print("Both FAISS GPU and CPU installation failed!")

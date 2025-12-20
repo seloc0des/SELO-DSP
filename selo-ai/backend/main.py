@@ -2852,6 +2852,7 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                         trigger_source="user_turn",
                         turn_id=turn_id,
                         additional_context=reflection_additional_context,
+                        user_name=user_name_from_message,
                     )
                     # Validate reflection result and extract content (preserve full payload for router)
                     reflection_text, reflection_payload = _extract_reflection_content(reflection_result)
@@ -2947,6 +2948,7 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                         trigger_source="user_turn",
                         turn_id=turn_id,
                         additional_context=reflection_additional_context,
+                        user_name=user_name_from_message,
                     )
                     # Extract reflection content (preserve full payload for router)
                     reflection_text, reflection_payload = _extract_reflection_content(reflection_result)
@@ -3089,6 +3091,7 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                         max_context_items=10,
                         trigger_source="user_turn_background",
                         turn_id=turn_id,
+                        user_name=user_name_from_message,
                     )
                 )
         except Exception as _bg_err:

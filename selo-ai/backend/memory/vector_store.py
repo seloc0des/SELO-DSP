@@ -133,7 +133,11 @@ class VectorStore:
                         logger.warning("FAISS GPU support not available - CPU-only FAISS package detected")
                         logger.warning("To enable GPU acceleration, install faiss-gpu package:")
                         logger.warning("  pip uninstall faiss")
-                        logger.warning("  pip install faiss-gpu>=1.7.2")
+                        import sys
+                        if sys.version_info >= (3, 12):
+                            logger.warning("  pip install faiss-gpu>=1.8.0  # Python 3.12+")
+                        else:
+                            logger.warning("  pip install faiss-gpu>=1.7.2  # Python <3.12")
                         logger.info(f"Initialized CPU FAISS index with dimension {self.embedding_dim}")
                         self.gpu_available = False
                         return

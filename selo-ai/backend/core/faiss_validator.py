@@ -161,10 +161,14 @@ class FAISSValidator:
             if result.returncode != 0:
                 return False, f"NumPy installation failed: {result.stderr}"
             
-            # Step 3: Install appropriate FAISS package
+            # Step 3: Install appropriate FAISS package with Python version detection
             if self.cuda_available:
-                logger.info("Installing FAISS GPU package...")
-                install_cmd = [sys.executable, '-m', 'pip', 'install', 'faiss-gpu>=1.7.2']
+                if sys.version_info >= (3, 12):
+                    logger.info("Installing FAISS GPU 1.8.0+ (Python 3.12+)...")
+                    install_cmd = [sys.executable, '-m', 'pip', 'install', 'faiss-gpu>=1.8.0']
+                else:
+                    logger.info("Installing FAISS GPU 1.7.2+ (Python <3.12)...")
+                    install_cmd = [sys.executable, '-m', 'pip', 'install', 'faiss-gpu>=1.7.2,<1.8.0']
                 result = subprocess.run(install_cmd, capture_output=True, text=True, timeout=300)
                 
                 if result.returncode == 0:

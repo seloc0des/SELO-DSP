@@ -101,15 +101,22 @@ def _read_int_env(name: str, default: int) -> int:
         return default
 
 
-# Detect system profile to use tier-appropriate token budgets
-SYSTEM_PROFILE = detect_system_profile()
-analytical_budget = SYSTEM_PROFILE.get("budgets", {}).get("analytical_max_tokens", 512)
+# Lazy system profile detection to avoid import-time failures
+def _get_analytical_budget() -> int:
+    """Get analytical token budget from system profile, with fallback."""
+    try:
+        profile = detect_system_profile()
+        return profile.get("budgets", {}).get("analytical_max_tokens", 512)
+    except Exception:
+        return 512
 
 # Use system profile analytical budget as baseline, but allow env overrides
-DEFAULT_PERSONA_ANALYTICAL_MAX_TOKENS = _read_int_env("PERSONA_ANALYTICAL_MAX_TOKENS", analytical_budget)
+# Call function instead of accessing module-level constant to avoid import-time crashes
+_analytical_budget = _get_analytical_budget()
+DEFAULT_PERSONA_ANALYTICAL_MAX_TOKENS = _read_int_env("PERSONA_ANALYTICAL_MAX_TOKENS", _analytical_budget)
 PERSONA_STAGE_MAX_TOKENS = {
-    "seed": _read_int_env("PERSONA_SEED_MAX_TOKENS", analytical_budget),
-    "traits": _read_int_env("PERSONA_TRAITS_MAX_TOKENS", min(384, analytical_budget)),
+    "seed": _read_int_env("PERSONA_SEED_MAX_TOKENS", _analytical_budget),
+    "traits": _read_int_env("PERSONA_TRAITS_MAX_TOKENS", min(384, _analytical_budget)),
 }
 
 TRAIT_COUNT_MIN = _read_int_env("PERSONA_TRAITS_MIN_COUNT", 5)

@@ -16,12 +16,14 @@ python-socketio>=5.10.0
 sqlalchemy>=2.0.0
 psycopg2-binary>=2.9.6
 asyncpg>=0.27.0
-numpy>=1.24.0,<2.0.0  # Pin to <2.0 for FAISS-GPU 1.7.2 compatibility
+numpy>=1.24.0,<2.0.0  # Pin to <2.0 for FAISS compatibility
 scipy>=1.10.0
 jinja2>=3.1.2
 # FAISS vector operations
 # Use GPU build on Linux/macOS, CPU build on Windows (no official GPU wheel)
-faiss-gpu>=1.7.2; platform_system != "Windows"
+# Python 3.12+ requires FAISS 1.8.0+, older versions use 1.7.x
+faiss-gpu>=1.8.0; platform_system != "Windows" and python_version >= "3.12"
+faiss-gpu>=1.7.2,<1.8.0; platform_system != "Windows" and python_version < "3.12"
 faiss-cpu>=1.7.4; platform_system == "Windows"
 sentence-transformers>=2.2.2
 
