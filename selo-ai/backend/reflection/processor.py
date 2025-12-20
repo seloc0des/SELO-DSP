@@ -5122,13 +5122,16 @@ Please regenerate your reflection following these identity constraints strictly.
                 _log_with_severity(f"🚨 Detected reflection leakage: {description}", severity)
                 break
 
-        if not detected:
+        # Don't return early - we still need to check for third-person persona references
+        # even if no other leakage was detected
+        if not detected and not normalized_persona:
+            # Only return early if there's no detection AND no persona name to check
             return content
 
-        _, description, severity = detected
-        
-        # Log the original for debugging
-        _log_with_severity(f"Original reflection (first 200 chars): {content[:200]}...", severity)
+        if detected:
+            _, description, severity = detected
+            # Log the original for debugging
+            _log_with_severity(f"Original reflection (first 200 chars): {content[:200]}...", severity)
         
         # Apply fixes
         # Fix 1: Remove direct address with name (e.g., "[Name], my creator" -> remove entirely)
