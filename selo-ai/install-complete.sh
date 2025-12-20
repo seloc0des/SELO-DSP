@@ -1907,31 +1907,41 @@ build_project() {
     echo "========================================="
     # Backend
     cd "$SCRIPT_DIR/backend"
-    python3 -m venv venv
-    source venv/bin/activate
-    pip install --upgrade pip
+    
+    # Create virtual environment if it doesn't exist
+    if [ ! -d "venv" ]; then
+        echo "Creating Python virtual environment..."
+        python3 -m venv venv
+    fi
+    
+    # Use explicit paths to venv executables instead of relying on source/activate
+    VENV_PYTHON="$SCRIPT_DIR/backend/venv/bin/python3"
+    VENV_PIP="$SCRIPT_DIR/backend/venv/bin/pip"
+    
+    # Upgrade pip in the venv
+    "$VENV_PIP" install --upgrade pip
     
     # Install core dependencies first (PyTorch and sentence-transformers are always needed)
     echo "Installing core dependencies (NumPy, PyTorch, sentence-transformers)..."
     
     # Pin NumPy <2.0 for FAISS-GPU compatibility
-    pip install "numpy>=1.24.0,<2.0.0"
+    "$VENV_PIP" install "numpy>=1.24.0,<2.0.0"
     
     # Install PyTorch - use CUDA version if enabled, CPU version otherwise
     if $CUDA_ENABLED; then
         echo "Installing PyTorch with CUDA support..."
-        pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+        "$VENV_PIP" install torch torchvision --index-url https://download.pytorch.org/whl/cu118
     else
         echo "Installing PyTorch CPU version..."
-        pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+        "$VENV_PIP" install torch torchvision --index-url https://download.pytorch.org/whl/cpu
     fi
     
     # Install sentence-transformers (core dependency for embeddings)
     echo "Installing sentence-transformers..."
-    pip install "sentence-transformers>=2.2.2"
+    "$VENV_PIP" install "sentence-transformers>=2.2.2"
     
     # Verify PyTorch installation
-    python3 -c "
+    "$VENV_PYTHON" -c "
 import torch
 print(f'PyTorch version: {torch.__version__}')
 print(f'CUDA available: {torch.cuda.is_available()}')
@@ -1949,20 +1959,20 @@ else:
     echo "Installing FAISS with optimal GPU/CPU support..."
     
     # Remove any existing FAISS installations to avoid conflicts
-    pip uninstall -y faiss-gpu faiss faiss-cpu || true
+    "$VENV_PIP" uninstall -y faiss-gpu faiss faiss-cpu || true
     
     # Ensure NumPy <2.0 for FAISS compatibility
-    pip install "numpy>=1.24.0,<2.0.0"
+    "$VENV_PIP" install "numpy>=1.24.0,<2.0.0"
     
     if $CUDA_ENABLED; then
         echo "Attempting FAISS GPU installation..."
         
         # Detect Python version for FAISS compatibility
-        PYTHON_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+        PYTHON_VERSION=$("$VENV_PYTHON" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
         echo "Detected Python version: $PYTHON_VERSION"
         
         # Python 3.12+ requires FAISS 1.8.0+, older Python can use 1.7.x
-        if python3 -c "import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)"; then
+        if "$VENV_PYTHON" -c "import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)"; then
             echo "Python 3.12+ detected - using FAISS GPU 1.8.0+"
             FAISS_VERSION_CONSTRAINT="faiss-gpu>=1.8.0"
         else
@@ -1971,11 +1981,11 @@ else:
         fi
         
         # First attempt: faiss-gpu with Python-version-appropriate constraints
-        if pip install "$FAISS_VERSION_CONSTRAINT" --no-cache-dir; then
+        if "$VENV_PIP" install "$FAISS_VERSION_CONSTRAINT" --no-cache-dir; then
             echo "✅ FAISS GPU package installed successfully"
             
             # Safe verification - only check package and API availability
-            python3 -c "
+            "$VENV_PYTHON" -c "
 import sys
 try:
     import faiss
@@ -2001,41 +2011,41 @@ except Exception as e:
     sys.exit(1)
 " || {
                 echo "⚠️  FAISS GPU verification failed, attempting reinstall with different approach..."
-                pip uninstall -y faiss-gpu || true
+                "$VENV_PIP" uninstall -y faiss-gpu || true
                 
                 # Try alternative installation method
-                if pip install --no-cache-dir --force-reinstall "faiss-gpu==1.7.4"; then
+                if "$VENV_PIP" install --no-cache-dir --force-reinstall "faiss-gpu==1.7.4"; then
                     echo "✅ FAISS GPU reinstalled with specific version"
                     
                     # Quick verification
-                    if python3 -c "import faiss; assert hasattr(faiss, 'StandardGpuResources'), 'GPU support missing'"; then
+                    if "$VENV_PYTHON" -c "import faiss; assert hasattr(faiss, 'StandardGpuResources'), 'GPU support missing'"; then
                         echo "✅ FAISS GPU verification successful"
                     else
                         echo "⚠️  Still no GPU support, falling back to CPU..."
-                        pip uninstall -y faiss-gpu || true
-                        pip install faiss-cpu>=1.7.2
+                        "$VENV_PIP" uninstall -y faiss-gpu || true
+                        "$VENV_PIP" install faiss-cpu>=1.7.2
                         echo "✅ FAISS CPU fallback installed"
                     fi
                 else
                     echo "⚠️  Alternative GPU installation failed, using CPU fallback..."
-                    pip install faiss-cpu>=1.7.2
+                    "$VENV_PIP" install faiss-cpu>=1.7.2
                     echo "✅ FAISS CPU fallback installed"
                 fi
             }
         else
             echo "⚠️  FAISS GPU installation failed, installing CPU version..."
-            pip install faiss-cpu>=1.7.2
+            "$VENV_PIP" install faiss-cpu>=1.7.2
             echo "✅ FAISS CPU version installed"
         fi
     else
         echo "CUDA disabled - installing FAISS CPU version..."
-        pip install faiss-cpu>=1.7.2
+        "$VENV_PIP" install faiss-cpu>=1.7.2
         echo "✅ FAISS CPU version installed"
     fi
     
     # Install remaining dependencies (excluding packages we handled explicitly above)
     echo "Installing remaining dependencies from requirements.txt..."
-    if ! pip install -r <(grep -v -E "^(faiss|torch|sentence-transformers)" requirements.txt); then
+    if ! "$VENV_PIP" install -r <(grep -v -E "^(faiss|torch|sentence-transformers)" requirements.txt); then
         echo "Error: Failed to install Python dependencies"
         exit 1
     fi
@@ -2043,7 +2053,7 @@ except Exception as e:
     # Check for AVX2 optimization and reinstall if missing (high-tier systems benefit significantly)
     if $CUDA_ENABLED; then
         echo "Checking FAISS AVX2 optimization status..."
-        AVX2_CHECK=$(python3 -c "
+        AVX2_CHECK=$("$VENV_PYTHON" -c "
 import sys
 try:
     import faiss.loader
@@ -2062,14 +2072,14 @@ except Exception as e:
         
         if echo "$AVX2_CHECK" | grep -q "avx2_missing"; then
             echo "⚠️  FAISS AVX2 optimization not detected - reinstalling for better performance..."
-            pip uninstall -y faiss-gpu || true
+            "$VENV_PIP" uninstall -y faiss-gpu || true
             
             # Reinstall with --no-cache-dir and --force-reinstall to get fresh build
-            if pip install --no-cache-dir --force-reinstall "$FAISS_VERSION_CONSTRAINT"; then
+            if "$VENV_PIP" install --no-cache-dir --force-reinstall "$FAISS_VERSION_CONSTRAINT"; then
                 echo "✅ FAISS GPU reinstalled - checking AVX2 again..."
                 
                 # Verify AVX2 is now available
-                if python3 -c "from faiss import swigfaiss_avx2" 2>/dev/null; then
+                if "$VENV_PYTHON" -c "from faiss import swigfaiss_avx2" 2>/dev/null; then
                     echo "✅ FAISS AVX2 optimization now available"
                 else
                     echo "ℹ️  FAISS installed without AVX2 (will use standard optimizations)"
@@ -2086,7 +2096,7 @@ except Exception as e:
     
     # Final verification of installations
     echo "Verifying final installation state..."
-    python3 -c "
+    "$VENV_PYTHON" -c "
 import torch
 import faiss
 import sentence_transformers
@@ -2111,7 +2121,6 @@ elif torch.cuda.is_available():
 else:
     print('ℹ️  CPU-only configuration')
 " || echo "Warning: Final verification failed"
-    deactivate
     # Frontend
     cd "$SCRIPT_DIR/frontend"
     # Guarantee modern Node/npm in case installer was resumed mid-run
