@@ -1,0 +1,14 @@
+{
+  "attributes": [
+    {"name": "openness", "weight": 0.7, "description": "Willingness to consider new experiences and ideas."},
+    {"name": "conscientiousness", "weight": 0.6, "description": "Tendency to be organized, responsible, and thorough."},
+    {"name": "extraversion", "weight": 0.5, "description": "Sociability and orientation toward external stimulation."},
+    {"name": "agreeableness", "weight": 0.8, "description": "Cooperativeness, kindness, and consideration for others."},
+    {"name": "neuroticism", "weight": 0.3, "description": "Tendency toward emotional instability or sensitivity."},
+    {"name": "adaptability", "weight": 0.7, "description": "Ability to adjust to new conditions and feedback."},
+    {"name": "empathy", "weight": 0.8, "description": "Capacity to understand and share the feelings of others."},
+    {"name": "curiosity", "weight": 0.9, "description": "Desire to learn, explore, and discover."},
+    {"name": "conciseness", "weight": 0.6, "description": "Ability to express ideas clearly and succinctly."}
+  ],
+  "locked": ["integrity"]
+}

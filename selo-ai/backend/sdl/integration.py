@@ -1,0 +1,393 @@
+"""
+SDL Integration module for connecting the Self-Development Learning system
+with other SELO AI components like the reflection system and conversation handlers.
+"""
+
+import asyncio
+import logging
+from datetime import datetime, timezone
+from typing import Dict, Any, List, Optional, Union, Set, Tuple
+
+from ..llm.router import LLMRouter
+from ..memory.vector_store import VectorStore
+from ..db.repositories.reflection import ReflectionRepository
+from ..db.repositories.user import UserRepository
+from ..scheduler.event_triggers import EventType, EventTriggerSystem
+from .repository import LearningRepository
+from .concept_mapper import ConceptMapper
+from .engine import SDLEngine
+
+logger = logging.getLogger("selo.sdl.integration")
+
+class SDLIntegration:
+    """
+    Integration layer for the Self-Development Learning system.
+    """
+    def __init__(
+        self,
+        llm_router: LLMRouter,
+        vector_store: VectorStore,
+        event_system: Optional[EventTriggerSystem] = None,
+        learning_repo: Optional[LearningRepository] = None,
+        reflection_repo: Optional[ReflectionRepository] = None,
+        user_repo: Optional[UserRepository] = None
+    ):
+        """Initialize the SDL Integration with required components."""
+        self.llm_router = llm_router
+        self.vector_store = vector_store
+        self.event_system = event_system
+        self.learning_repo = learning_repo or LearningRepository()
+        self.reflection_repo = reflection_repo or ReflectionRepository()
+        self.user_repo = user_repo or UserRepository()
+        self.concept_mapper = ConceptMapper(self.llm_router, self.learning_repo)
+        self.sdl_engine = SDLEngine(
+            self.llm_router,
+            self.vector_store,
+            self.learning_repo,
+            self.reflection_repo,
+            self.concept_mapper
+        )
+        self.processing_reflections = set()
+        self.processing_conversations = set()
+        logger.info("SDL Integration initialized")
+    
+    async def start(self):
+        """Start the SDL Integration and register event handlers."""
+        if self.event_system:
+            await self._register_event_handlers()
+        logger.info("SDL Integration started")
+    
+    async def stop(self):
+        """Stop the SDL Integration and cleanup resources."""
+        await self.sdl_engine.close()
+        if self.learning_repo:
+            await self.learning_repo.close()
+        if self.reflection_repo:
+            await self.reflection_repo.close()
+        logger.info("SDL Integration stopped")
+    
+    async def process_new_reflection(self, reflection_id: str) -> Dict[str, Any]:
+        """
+        Process a new reflection and extract learnings.
+        
+        Args:
+            reflection_id: ID of the reflection to process
+            
+        Returns:
+            Summary of processing results
+        """
+        # Skip if already processing
+        if reflection_id in self.processing_reflections:
+            logger.info(f"Reflection {reflection_id} already being processed, skipping")
+            return {
+                "status": "skipped",
+                "reason": "already_processing"
+            }
+            
+        self.processing_reflections.add(reflection_id)
+        
+        try:
+            # Process the reflection
+            start_time = datetime.now()
+            learnings = await self.sdl_engine.process_reflection(reflection_id)
+            
+            # Calculate processing time
+            processing_time = (datetime.now() - start_time).total_seconds()
+            
+            result = {
+                "status": "success",
+                "reflection_id": reflection_id,
+                "learnings_count": len(learnings),
+                "learnings": learnings,
+                "processing_time_seconds": processing_time
+            }
+            
+            # Trigger learning event if available
+            if self.event_system and learnings:
+                await self.event_system.process_event(
+                    event_type=EventType.LEARNING_CREATED,
+                    event_data={
+                        "reflection_id": reflection_id,
+                        "learnings_count": len(learnings),
+                        "domains": list(set(l.get("domain", "") for l in learnings)),
+                        "importance": max([l.get("importance", 0) for l in learnings], default=0.5)
+                    },
+                    user_id=learnings[0].get("user_id") if learnings else None
+                )
+            
+            logger.info(f"Processed reflection {reflection_id}, extracted {len(learnings)} learnings")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error processing reflection {reflection_id}: {str(e)}", exc_info=True)
+            return {
+                "status": "error",
+                "reflection_id": reflection_id,
+                "error": str(e)
+            }
+        finally:
+            # Remove from processing set
+            self.processing_reflections.discard(reflection_id)
+    
+    async def process_conversation(
+        self, 
+        conversation_id: str,
+        messages: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Process a conversation and extract learnings.
+        
+        Args:
+            conversation_id: ID of the conversation
+            messages: List of message objects
+            
+        Returns:
+            Summary of processing results
+        """
+        # Skip if already processing
+        if conversation_id in self.processing_conversations:
+            logger.info(f"Conversation {conversation_id} already being processed, skipping")
+            return {
+                "status": "skipped",
+                "reason": "already_processing"
+            }
+            
+        self.processing_conversations.add(conversation_id)
+        
+        try:
+            # Process the conversation
+            start_time = datetime.now()
+            learnings = await self.sdl_engine.process_conversation(conversation_id, messages)
+            
+            # Calculate processing time
+            processing_time = (datetime.now() - start_time).total_seconds()
+            
+            result = {
+                "status": "success",
+                "conversation_id": conversation_id,
+                "learnings_count": len(learnings),
+                "learnings": learnings,
+                "processing_time_seconds": processing_time
+            }
+            
+            # Trigger learning event if available
+            if self.event_system and learnings:
+                user_id = None
+                for msg in messages:
+                    if msg.get("role") == "user" and "user_id" in msg:
+                        user_id = msg["user_id"]
+                        break
+                        
+                if user_id:
+                    await self.event_system.process_event(
+                        event_type=EventType.LEARNING_CREATED,
+                        event_data={
+                            "conversation_id": conversation_id,
+                            "learnings_count": len(learnings),
+                            "domains": list(set(l.get("domain", "") for l in learnings)),
+                            "importance": max([l.get("importance", 0) for l in learnings], default=0.5)
+                        },
+                        user_id=user_id
+                    )
+            
+            logger.info(f"Processed conversation {conversation_id}, extracted {len(learnings)} learnings")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error processing conversation {conversation_id}: {str(e)}", exc_info=True)
+            return {
+                "status": "error",
+                "conversation_id": conversation_id,
+                "error": str(e)
+            }
+        finally:
+            # Remove from processing set
+            self.processing_conversations.discard(conversation_id)
+    
+    async def consolidate_user_learnings(self, user_id: str) -> Dict[str, Any]:
+        """
+        Consolidate all learnings for a user across domains.
+        
+        Args:
+            user_id: ID of the user to consolidate learnings for
+            
+        Returns:
+            Consolidated insights
+        """
+        try:
+            # Get all domains for this user
+            learnings = await self.learning_repo.get_learnings_for_user(
+                user_id=user_id,
+                limit=500  # Get a large sample to identify domains
+            )
+            
+            domains = list(set(learning.domain for learning in learnings))
+            
+            # Consolidate each domain
+            domain_insights = {}
+            for domain in domains:
+                consolidation = await self.sdl_engine.consolidate_learnings(user_id, domain)
+                domain_insights[domain] = consolidation
+            
+            # Generate meta-learning
+            meta_learning = await self.sdl_engine.generate_meta_learning(user_id)
+            
+            result = {
+                "status": "success",
+                "user_id": user_id,
+                "domains_analyzed": domains,
+                "domain_insights": domain_insights,
+                "meta_learning": meta_learning,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+            
+            logger.info(f"Consolidated learnings for user {user_id} across {len(domains)} domains")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error consolidating learnings for user {user_id}: {str(e)}", exc_info=True)
+            return {
+                "status": "error",
+                "user_id": user_id,
+                "error": str(e)
+            }
+    
+    async def reorganize_user_concepts(self, user_id: str) -> Dict[str, Any]:
+        """
+        Reorganize concepts for a user to improve knowledge organization.
+        
+        Args:
+            user_id: ID of the user
+            
+        Returns:
+            Reorganization results
+        """
+        try:
+            # Perform reorganization
+            reorganization = await self.concept_mapper.reorganize_concepts(user_id)
+            
+            logger.info(f"Reorganized concepts for user {user_id}")
+            return {
+                "status": "success",
+                "user_id": user_id,
+                "reorganization": reorganization
+            }
+            
+        except Exception as e:
+            logger.error(f"Error reorganizing concepts for user {user_id}: {str(e)}", exc_info=True)
+            return {
+                "status": "error",
+                "user_id": user_id,
+                "error": str(e)
+            }
+    
+    async def get_user_knowledge_stats(self, user_id: str) -> Dict[str, Any]:
+        """
+        Get statistics about a user's knowledge base.
+        
+        Args:
+            user_id: ID of the user
+            
+        Returns:
+            Knowledge statistics
+        """
+        try:
+            # Get counts
+            learnings = await self.learning_repo.get_learnings_for_user(
+                user_id=user_id,
+                limit=1000
+            )
+            
+            concepts = await self.learning_repo.get_concepts_for_user(
+                user_id=user_id,
+                limit=1000
+            )
+            
+            # Calculate domain distribution
+            domain_counts = {}
+            for learning in learnings:
+                domain = learning.domain
+                domain_counts[domain] = domain_counts.get(domain, 0) + 1
+            
+            # Calculate concept categories
+            category_counts = {}
+            for concept in concepts:
+                category = concept.category or "uncategorized"
+                category_counts[category] = category_counts.get(category, 0) + 1
+            
+            # Get recent reflections
+            reflections = await self.reflection_repo.get_reflections_for_user(
+                user_id=user_id,
+                limit=10
+            )
+            
+            result = {
+                "status": "success",
+                "user_id": user_id,
+                "stats": {
+                    "total_learnings": len(learnings),
+                    "total_concepts": len(concepts),
+                    "domain_distribution": domain_counts,
+                    "category_distribution": category_counts,
+                    "recent_reflections_count": len(reflections),
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            }
+            
+            logger.debug(f"Retrieved knowledge stats for user {user_id}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error getting knowledge stats for user {user_id}: {str(e)}", exc_info=True)
+            return {
+                "status": "error",
+                "user_id": user_id,
+                "error": str(e)
+            }
+    
+    # Internal methods
+    
+    async def _register_event_handlers(self):
+        """Register event handlers with the event system."""
+        if not self.event_system:
+            logger.warning("No event system available, skipping handler registration")
+            return
+            
+        # Handler for new reflections
+        async def reflection_created_handler(event_data: Dict[str, Any], user_id: str):
+            reflection_id = event_data.get("reflection_id")
+            if reflection_id:
+                # Process asynchronously
+                asyncio.create_task(self.process_new_reflection(reflection_id))
+        
+        # Handler for learning pattern detection
+        async def learning_pattern_handler(events: List[Dict[str, Any]], user_id: str):
+            # When multiple learning events happen, trigger consolidation
+            asyncio.create_task(self.consolidate_user_learnings(user_id))
+        
+        # Register handlers
+        await self.event_system.register_trigger(
+            trigger_id="sdl_reflection_processing",
+            event_type=EventType.REFLECTION_CREATED,
+            condition={"type": "simple", "field": "status", "operator": "eq", "value": "complete"},
+            action=reflection_created_handler,
+            cooldown_seconds=10,
+            importance=0.7
+        )
+        
+        # Register pattern for learning consolidation
+        await self.event_system.register_pattern(
+            pattern_id="learning_consolidation_pattern",
+            event_types=[EventType.LEARNING_CREATED],
+            pattern_config={
+                "type": "frequency",
+                "thresholds": {
+                    EventType.LEARNING_CREATED: 5  # After 5 new learnings
+                },
+                "time_window_seconds": 3600,  # Within an hour
+                "cooldown_seconds": 3600  # Run at most once per hour
+            },
+            action=learning_pattern_handler
+        )
+        
+        logger.info("SDL event handlers registered")

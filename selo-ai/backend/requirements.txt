@@ -1,0 +1,46 @@
+# Core dependencies
+fastapi>=0.104.0
+uvicorn>=0.24.0
+pydantic>=2.5.0
+python-multipart>=0.0.5
+requests>=2.31.0
+httpx>=0.25.0
+trafilatura>=1.8.0
+python-dotenv>=1.0.0
+lxml[html_clean]>=5.0.0
+
+# Socket.IO for real-time communication
+python-socketio>=5.10.0
+
+# Reflection system dependencies
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.6
+asyncpg>=0.27.0
+numpy>=1.24.0,<2.0.0  # Pin to <2.0 for FAISS-GPU 1.7.2 compatibility
+scipy>=1.10.0
+jinja2>=3.1.2
+# FAISS vector operations
+# Use GPU build on Linux/macOS, CPU build on Windows (no official GPU wheel)
+faiss-gpu>=1.7.2; platform_system != "Windows"
+faiss-cpu>=1.7.4; platform_system == "Windows"
+sentence-transformers>=2.2.2
+
+# Scheduler for automated reflections
+apscheduler>=3.10.1
+pytz>=2023.3
+
+# Database migrations
+alembic>=1.13.0
+
+# Web page content extraction enhancement
+beautifulsoup4>=4.12.2
+
+# System monitoring for resource-aware scheduling
+psutil>=5.9.8
+
+# Note: statistics is a built-in Python module, no external dependency needed
+
+# GPU acceleration support
+torch>=2.0.0
+torchvision>=0.15.0
+# For CUDA support, install with: pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118

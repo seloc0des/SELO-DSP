@@ -1,0 +1,34 @@
+[Unit]
+Description=SELO DSP Digital Sentience Platform
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+Group=%i
+# Load environment file which contains INSTALL_DIR and other settings
+# The - prefix makes it non-fatal if file doesn't exist (but it should always exist after install)
+EnvironmentFile=-/etc/selo-ai/environment
+# Fallback only if environment file is missing (should not happen after proper install)
+Environment=INSTALL_DIR=/opt/selo-ai
+# Proactively free the configured backend port before starting (prevents bind races)
+ExecStartPre=/bin/bash -c 'fuser -k ${SELO_AI_PORT:-8000}/tcp 2>/dev/null || true'
+ExecStart=/bin/bash -c '"${INSTALL_DIR}/start-service.sh"'
+ExecStop=/bin/bash -c 'for f in backend.pid frontend.pid; do p=$(cat "${INSTALL_DIR}/$f" 2>/dev/null || true); [ -n "$p" ] && kill "$p" 2>/dev/null || true; done; sleep 2; for f in backend.pid frontend.pid; do p=$(cat "${INSTALL_DIR}/$f" 2>/dev/null || true); [ -n "$p" ] && kill -9 "$p" 2>/dev/null || true; done'
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=selo-ai
+KillMode=control-group
+KillSignal=SIGTERM
+TimeoutStopSec=120
+
+# Environment variables
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
+

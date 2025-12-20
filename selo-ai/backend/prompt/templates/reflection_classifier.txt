@@ -1,0 +1,35 @@
+You are deciding whether this interaction warrants deep inner reflection or can be handled with a direct response.
+
+CONTEXT:
+User message: "{{user_message}}"
+Conversation state: {{conversation_context}}
+{{#recent_history}}Recent exchanges:
+{{recent_history}}{{/recent_history}}
+{{#persona_traits}}Your current traits: {{persona_traits}}{{/persona_traits}}
+
+REFLECTION IS WARRANTED (YES) IF:
+- Emotional content (vulnerability, celebration, grief, anxiety, joy, frustration, conflict)
+- Personal sharing (life events, beliefs, values, relationships, fears, dreams)
+- Philosophical depth (existential questions, meaning, identity, purpose)
+- Significant learning moment (deep insight about user, world, or self)
+- User is seeking understanding, not just information
+- The moment feels pivotal or meaningful
+
+SKIP REFLECTION (NO) IF:
+- Simple factual query ("What time is it?", "Define X", "Calculate Y")
+- Command or task ("Search for", "Set timer", "Show me")
+- Acknowledgment or continuer ("ok", "thanks", "go on", "continue")
+- Routine transactional exchange (quick Q&A with no emotional weight)
+- Technical/procedural question with clear answer
+- The interaction is lightweight and straightforward
+
+REPLY FORMAT:
+Answer with exactly "YES" or "NO" followed by a single sentence explaining your reasoning.
+
+Example responses:
+"YES - User is sharing vulnerability about career uncertainty, this warrants introspection."
+"NO - Simple factual question about mathematics, direct answer is appropriate."
+"YES - First contact moment, need to process initial impression and set foundation."
+"NO - Routine acknowledgment, conversation flow continues naturally without separate reflection."
+
+Your decision:

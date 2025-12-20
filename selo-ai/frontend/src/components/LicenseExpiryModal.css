@@ -1,0 +1,265 @@
+.license-expiry-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  backdrop-filter: blur(4px);
+}
+
+.license-expiry-modal {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  max-width: 500px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.license-expiry-header {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: white;
+  padding: 24px;
+  text-align: center;
+  border-radius: 12px 12px 0 0;
+}
+
+.license-expiry-icon {
+  font-size: 3rem;
+  margin-bottom: 12px;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+.license-expiry-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.license-expiry-content {
+  padding: 24px;
+}
+
+.license-expiry-message {
+  font-size: 1.1rem;
+  color: #374151;
+  margin-bottom: 20px;
+  text-align: center;
+  font-weight: 500;
+}
+
+.license-expiry-runtime-notice {
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.license-expiry-runtime-notice p {
+  margin: 0;
+  color: #92400e;
+  font-size: 0.9rem;
+}
+
+.license-expiry-details h3 {
+  color: #1f2937;
+  font-size: 1.2rem;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.license-expiry-details p {
+  color: #4b5563;
+  line-height: 1.6;
+  margin-bottom: 16px;
+}
+
+.license-expiry-next-steps {
+  background: #f9fafb;
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 16px;
+}
+
+.license-expiry-next-steps h4 {
+  color: #1f2937;
+  font-size: 1rem;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.license-expiry-next-steps ul {
+  margin: 0;
+  padding-left: 20px;
+  color: #4b5563;
+}
+
+.license-expiry-next-steps li {
+  margin-bottom: 4px;
+  line-height: 1.5;
+}
+
+.license-expiry-actions {
+  padding: 0 24px 24px;
+  text-align: center;
+}
+
+.license-expiry-countdown {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.license-expiry-button {
+  background: #ef4444;
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 140px;
+}
+
+.license-expiry-button:hover {
+  background: #dc2626;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.license-expiry-button:active {
+  transform: translateY(0);
+}
+
+.license-expiry-countdown-text {
+  color: #6b7280;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.license-expiry-footer {
+  background: #f9fafb;
+  padding: 16px 24px;
+  text-align: center;
+  border-radius: 0 0 12px 12px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.license-expiry-footer p {
+  margin: 0;
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .license-expiry-modal {
+    background: #1f2937;
+    color: #f9fafb;
+  }
+
+  .license-expiry-message {
+    color: #d1d5db;
+  }
+
+  .license-expiry-details h3 {
+    color: #f9fafb;
+  }
+
+  .license-expiry-details p {
+    color: #d1d5db;
+  }
+
+  .license-expiry-next-steps {
+    background: #374151;
+  }
+
+  .license-expiry-next-steps h4 {
+    color: #f9fafb;
+  }
+
+  .license-expiry-next-steps ul {
+    color: #d1d5db;
+  }
+
+  .license-expiry-footer {
+    background: #374151;
+    border-top-color: #4b5563;
+  }
+
+  .license-expiry-footer p {
+    color: #9ca3af;
+  }
+
+  .license-expiry-countdown-text {
+    color: #9ca3af;
+  }
+}
+
+/* Mobile responsiveness */
+@media (max-width: 640px) {
+  .license-expiry-modal {
+    width: 95%;
+    margin: 20px;
+  }
+
+  .license-expiry-header {
+    padding: 20px;
+  }
+
+  .license-expiry-icon {
+    font-size: 2.5rem;
+  }
+
+  .license-expiry-header h2 {
+    font-size: 1.3rem;
+  }
+
+  .license-expiry-content {
+    padding: 20px;
+  }
+
+  .license-expiry-message {
+    font-size: 1rem;
+  }
+
+  .license-expiry-actions {
+    padding: 0 20px 20px;
+  }
+
+  .license-expiry-button {
+    width: 100%;
+    padding: 14px 20px;
+  }
+}

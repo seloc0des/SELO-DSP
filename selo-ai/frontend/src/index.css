@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Theme variables: modern dark */
+:root {
+  /* Backgrounds */
+  --color-bg: #0B0F12;
+  --color-bg-elev-1: #12171C;
+  --color-bg-elev-2: #1A2026;
+
+  /* Text */
+  --color-text-primary: #E6F1FF;
+  --color-text-secondary: #B3C2D1;
+  --color-text-muted: #7A8A99;
+
+  /* Accent */
+  --color-accent: #00D1FF;
+  --color-accent-strong: #0FF0FC;
+
+  /* Borders & Focus */
+  --color-border: #2A3440;
+  --color-focus-ring: rgba(0, 209, 255, 0.5);
+
+  /* States */
+  --color-success: #1FDB6B;
+  --color-warning: #FFC857;
+  --color-danger: #FF6B6B;
+}
+
+/* Base styles */
+body {
+  margin: 0;
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
+  overflow-x: hidden;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
+
+/* Remove legacy neon glow styles for a cleaner aesthetic */
+
+/* Custom selection color */
+::selection {
+  background: var(--color-accent);
+  color: #000000;
+}
+
+/* Accessible focus styles */
+/* Remove default outline to avoid double rings; we reintroduce for focus-visible only */
+:focus { outline: none; }
+
+/* Apply a consistent, visible focus ring to interactive elements */
+:where(a, button, input, textarea, select, summary, [role="button"], [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--color-focus-ring);
+  border-radius: 6px;
+}
+
+/* High-contrast mode support */
+@media (forced-colors: active) {
+  :where(a, button, input, textarea, select, summary, [role="button"], [tabindex]:not([tabindex="-1"])):focus-visible {
+    outline: 2px solid CanvasText;
+    box-shadow: none;
+  }
+}
+
+/* Reduced motion respect for any animated focus styles (if added later) */
+@media (prefers-reduced-motion: reduce) {
+  :where(a, button, input, textarea, select, summary, [role="button"], [tabindex]:not([tabindex="-1"])):focus-visible {
+    transition: none;
+  }
+}
