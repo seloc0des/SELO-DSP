@@ -2040,6 +2040,50 @@ except Exception as e:
         exit 1
     fi
     
+    # Check for AVX2 optimization and reinstall if missing (high-tier systems benefit significantly)
+    if $CUDA_ENABLED; then
+        echo "Checking FAISS AVX2 optimization status..."
+        AVX2_CHECK=$(python3 -c "
+import sys
+try:
+    import faiss.loader
+    # Check if AVX2 module is available
+    try:
+        from faiss import swigfaiss_avx2
+        print('avx2_available')
+        sys.exit(0)
+    except ImportError:
+        print('avx2_missing')
+        sys.exit(1)
+except Exception as e:
+    print('avx2_unknown')
+    sys.exit(2)
+" 2>&1 || echo "avx2_missing")
+        
+        if echo "$AVX2_CHECK" | grep -q "avx2_missing"; then
+            echo "⚠️  FAISS AVX2 optimization not detected - reinstalling for better performance..."
+            pip uninstall -y faiss-gpu || true
+            
+            # Reinstall with --no-cache-dir and --force-reinstall to get fresh build
+            if pip install --no-cache-dir --force-reinstall "$FAISS_VERSION_CONSTRAINT"; then
+                echo "✅ FAISS GPU reinstalled - checking AVX2 again..."
+                
+                # Verify AVX2 is now available
+                if python3 -c "from faiss import swigfaiss_avx2" 2>/dev/null; then
+                    echo "✅ FAISS AVX2 optimization now available"
+                else
+                    echo "ℹ️  FAISS installed without AVX2 (will use standard optimizations)"
+                fi
+            else
+                echo "⚠️  Reinstallation failed - continuing with current FAISS installation"
+            fi
+        elif echo "$AVX2_CHECK" | grep -q "avx2_available"; then
+            echo "✅ FAISS AVX2 optimization already available"
+        else
+            echo "ℹ️  Could not determine AVX2 status - continuing with current installation"
+        fi
+    fi
+    
     # Final verification of installations
     echo "Verifying final installation state..."
     python3 -c "
@@ -2052,6 +2096,14 @@ print(f'FAISS version: {faiss.__version__}')
 print(f'Sentence-transformers version: {sentence_transformers.__version__}')
 gpu_support = hasattr(faiss, 'StandardGpuResources') and hasattr(faiss, 'index_cpu_to_gpu')
 print(f'FAISS GPU support: {gpu_support}')
+
+# Check AVX2 optimization
+try:
+    from faiss import swigfaiss_avx2
+    print('FAISS AVX2 optimization: ✅ Available')
+except ImportError:
+    print('FAISS AVX2 optimization: ⚠️  Not available (using standard)')
+
 if torch.cuda.is_available() and gpu_support:
     print('✅ Full GPU acceleration available')
 elif torch.cuda.is_available():
