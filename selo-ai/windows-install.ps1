@@ -596,6 +596,7 @@ function Initialize-Environment {
         $rng.GetBytes($bytes)
         $apiKey = [System.BitConverter]::ToString($bytes).Replace('-', '').ToLower()
         
+        $reportsDir = Join-Path (Split-Path $ScriptDir -Parent) 'Reports'
         @"
 # SELO AI Backend Configuration
 DATABASE_URL=sqlite+aiosqlite:///selo_ai.db
@@ -612,6 +613,9 @@ PORT=8000
 CORS_ORIGINS=http://localhost:3000
 
 SOCKET_IO_ENABLED=true
+
+# Boot seed directives location
+SELO_REPORTS_DIR=$reportsDir
 "@ | Set-Content $backendEnv
         
         Write-Success "Created minimal environment configuration"

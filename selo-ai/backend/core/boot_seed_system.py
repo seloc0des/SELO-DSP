@@ -46,7 +46,7 @@ class BootSeedDirectiveSelector:
         
         # Fallback: Try to find the directives file relative to the project root
         current_file = Path(__file__)
-        project_root = current_file.parents[3]  # Go up to SELOBasiChat root
+        project_root = current_file.parents[3]  # Go up to SELODSP root
         directives_path = project_root / "Reports" / "Boot_Seed_Directive_Prompts.md"
         
         if directives_path.exists():

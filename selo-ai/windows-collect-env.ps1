@@ -164,6 +164,10 @@ Ensure-Default -Key 'PORT' -Value '8000'
 Ensure-Default -Key 'CORS_ORIGINS' -Value 'http://localhost:3000'
 Ensure-Default -Key 'DATABASE_URL' -Value 'sqlite+aiosqlite:///selo_ai_beta.db'
 
+# Set Reports directory path for boot directives (relative to project root)
+$ReportsDir = Join-Path (Split-Path $RootDir -Parent) 'Reports'
+Upsert-EnvLine -Key 'SELO_REPORTS_DIR' -Value $ReportsDir -Lines ([ref]$lines)
+
 # Write file
 $lines | Set-Content -Path $EnvPath -Encoding UTF8
 
