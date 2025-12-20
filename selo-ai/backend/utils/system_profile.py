@@ -106,7 +106,7 @@ def detect_system_profile() -> Dict[str, Any]:
             "chat_max_tokens": 1024,
             # qwen2.5:3b supports 8192 token context natively - use full capacity
             "reflection_max_tokens": 640,
-            "analytical_max_tokens": 640,
+            "analytical_max_tokens": 1024,  # Increased from 640 to support bootstrap persona generation
             "allow_warmup": False,
         },
     }
@@ -121,6 +121,7 @@ def detect_system_profile() -> Dict[str, Any]:
         "budgets": {
             "chat_max_tokens": budgets["chat_max_tokens"],
             "reflection_max_tokens": budgets["reflection_max_tokens"],
+            "analytical_max_tokens": budgets["analytical_max_tokens"],
         },
         "features": {
             "allow_warmup": bool(budgets["allow_warmup"]),
