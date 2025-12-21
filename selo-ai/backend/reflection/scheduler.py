@@ -17,12 +17,22 @@ logger = logging.getLogger("selo.reflection.scheduler")
 # -------------------------------------------------------------------------------------
 async def _get_services():
     """Lazily import and initialize app services for jobs."""
+    # Since we're already in an async context (APScheduler async job),
+    # we can directly await initialize_services instead of using get_script_app_context
+    # which would cause "RuntimeError: Cannot run the event loop while another loop is running"
     try:
-        from backend.scripts.script_helpers import get_script_app_context
+        from backend.main import initialize_services
     except Exception:
-        # Fallback import when running within package context
-        from scripts.script_helpers import get_script_app_context  # type: ignore
-    return get_script_app_context(mock_mode=False)
+        try:
+            from main import initialize_services  # type: ignore
+        except Exception as e:
+            logger.error(f"Failed to import initialize_services: {e}")
+            raise
+    
+    # We're in an async context, so we can directly await
+    services = await initialize_services()
+    services["is_mock_context"] = False
+    return services
 
 
 async def run_reflection_for_all_users_job(reflection_type: str):

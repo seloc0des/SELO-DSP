@@ -154,7 +154,7 @@ class ExampleRepository:
             except Exception as e:
                 logger.warning(f"Failed to seed example {example_data['scenario']}: {e}")
         
-        logger.info(f"� Seeded {len(seed_examples)} minimal reflection examples for single-user application")
+        logger.info(f"✨ Seeded {len(seed_examples)} minimal reflection examples for single-user application")
     
     async def get_examples_for_context(
         self,

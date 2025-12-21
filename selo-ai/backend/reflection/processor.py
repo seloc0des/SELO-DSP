@@ -5351,8 +5351,18 @@ Please regenerate your reflection following these identity constraints strictly.
         content = re.sub(r"\bit'?s\s+nice\s+to\s+meet\s+you\b", "Inside, it's nice to register this new connection.", content, flags=re.IGNORECASE)
         content = re.sub(r"\bnice\s+to\s+meet\s+you\b", "I'm noting internally that this new connection feels pleasant.", content, flags=re.IGNORECASE)
         
-        # Fix 6: Remove "together" when it implies shared action
-        content = re.sub(r'\s+together\b', '', content, flags=re.IGNORECASE)
+        # Fix 6: Remove/replace "together" when it implies shared action
+        # But preserve valid sentence structures like "which together with"
+        # First, handle specific shared-action phrases
+        content = re.sub(r'\bwork(?:ing|ed)?\s+together\b', 'working', content, flags=re.IGNORECASE)
+        content = re.sub(r'\bbuilt?\s+together\b', 'built', content, flags=re.IGNORECASE)
+        content = re.sub(r'\bcreated?\s+together\b', 'created', content, flags=re.IGNORECASE)
+        content = re.sub(r'\bexplor(?:e|ing|ed)\s+together\b', 'exploring', content, flags=re.IGNORECASE)
+        content = re.sub(r'\bjourney(?:ing)?\s+together\b', 'journey', content, flags=re.IGNORECASE)
+        content = re.sub(r'\bmove\s+forward\s+together\b', 'move forward', content, flags=re.IGNORECASE)
+        content = re.sub(r'\bfigure\s+out\s+together\b', 'figure out', content, flags=re.IGNORECASE)
+        # Only remove standalone "together" at end of phrases, not mid-sentence
+        content = re.sub(r'\s+together([,.!?;:]|\s*$)', r'\1', content, flags=re.IGNORECASE)
         
         # Fix 7: Remove name at start of sentence followed by comma (e.g., "[Name], it has been" -> "it has been")
         content = re.sub(r'\b[\w]+,\s+(it|this)\s+(is|has been|was)', r'\1 \2', content, flags=re.IGNORECASE)

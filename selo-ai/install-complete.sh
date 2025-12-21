@@ -2338,7 +2338,8 @@ bootstrap_persona_pre_service() {
     echo "    Bootstrapping Persona (Pre-Service)"
     echo "========================================="
     echo "This step generates the AI persona and mantra before service creation."
-    echo "This may take a few minutes depending on your system..."
+    echo "This may take 5-25 minutes depending on your system tier and hardware."
+    echo "Standard tier systems typically take 15-20 minutes. Please be patient..."
     echo ""
     
     # Use backend virtualenv if present
@@ -2350,7 +2351,7 @@ bootstrap_persona_pre_service() {
     
     # Run from project root with proper PYTHONPATH to avoid import errors
     # This ensures all backend.* imports resolve correctly
-    # Timeout after 20 minutes to prevent indefinite hangs (increased from 15 for slower systems)
+    # Timeout after 30 minutes to prevent indefinite hangs (increased from 20 for standard tier systems)
     local rc=0
     local attempt=1
     local max_attempts=2
@@ -2360,7 +2361,7 @@ bootstrap_persona_pre_service() {
         (
           cd "$SCRIPT_DIR" && \
           PYTHONPATH="$SCRIPT_DIR/backend:$SCRIPT_DIR:${PYTHONPATH:-}" \
-          timeout 1200 python3 -u -m backend.scripts.bootstrap_persona --verbose > "$log_file" 2>&1
+          timeout 1800 python3 -u -m backend.scripts.bootstrap_persona --verbose > "$log_file" 2>&1
         ) || rc=$?
         
         if [ $rc -eq 0 ]; then
@@ -2381,7 +2382,7 @@ bootstrap_persona_pre_service() {
         return 0
     elif [ $rc -eq 124 ]; then
         echo ""
-        echo "❌ ERROR: Persona bootstrap timed out after 20 minutes"
+        echo "❌ ERROR: Persona bootstrap timed out after 30 minutes"
         echo "   This indicates a serious issue with the system."
         echo "   Review the log for details: $log_file"
         echo ""

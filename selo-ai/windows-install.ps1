@@ -546,8 +546,14 @@ function Initialize-Persona {
         return
     }
     
-    Write-Info "This step generates the AI's unique identity and personality."
-    Write-Info "This may take 5-15 minutes depending on your system..."
+    Write-Info "This step generates the AI persona and mantra before service creation."
+    Write-Info "This may take 5-25 minutes depending on your system tier and hardware."
+    Write-Info "This is an essential step that creates your SELO's personality and core values."
+    Write-Info "The SELO will have a unique name, mantra, and behavioral traits."
+    Write-Info "This process establishes your SELO's fundamental character and guiding principles."
+    Write-Info "Your SELO will be ready with a distinct identity when the service starts."
+    Write-Info "Standard tier systems typically take 15-20 minutes. Please be patient..."
+    Write-Info ""
     
     Push-Location $ScriptDir
     
@@ -557,17 +563,87 @@ function Initialize-Persona {
         $logFile = Join-Path $ScriptDir "logs\persona_bootstrap.log"
         New-Item -ItemType Directory -Path (Split-Path $logFile) -Force -ErrorAction SilentlyContinue | Out-Null
         
-        Write-Info "Running persona bootstrap (log: $logFile)..."
+        # Timeout after 30 minutes to prevent indefinite hangs (increased from 20 for standard tier systems)
+        $timeoutSeconds = 1800  # 30 minutes
+        $maxAttempts = 2
+        $attempt = 1
+        $success = $false
         
-        & $PythonEnv.PythonPath -u -m backend.scripts.bootstrap_persona --verbose 2>&1 | Tee-Object -FilePath $logFile
-        
-        if ($LASTEXITCODE -eq 0) {
-            Write-Success "Persona bootstrap completed successfully"
+        while ($attempt -le $maxAttempts) {
+            Write-Info "Persona bootstrap attempt $attempt of $maxAttempts..."
+            
+            # Start the bootstrap process with timeout
+            $job = Start-Job -ScriptBlock {
+                param($PythonPath, $ScriptDir, $LogFile)
+                $env:PYTHONPATH = "$ScriptDir\backend;$ScriptDir"
+                Set-Location $ScriptDir
+                & $PythonPath -u -m backend.scripts.bootstrap_persona --verbose 2>&1 | Tee-Object -FilePath $LogFile
+                return $LASTEXITCODE
+            } -ArgumentList $PythonEnv.PythonPath, $ScriptDir, $logFile
+            
+            # Wait for job to complete or timeout
+            $completed = Wait-Job -Job $job -Timeout $timeoutSeconds
+            
+            if ($completed) {
+                $exitCode = Receive-Job -Job $job
+                Remove-Job -Job $job -Force
+                
+                if ($exitCode -eq 0) {
+                    Write-Success "Persona bootstrap completed successfully on attempt $attempt"
+                    Write-Info "  Log: $logFile"
+                    $success = $true
+                    break
+                }
+                elseif ($attempt -lt $maxAttempts) {
+                    Write-Warning "Persona bootstrap failed (exit code $exitCode), retrying..."
+                    Start-Sleep -Seconds 5
+                }
+                else {
+                    Write-Host ""
+                    Write-Error "ERROR: Persona bootstrap failed with exit code $exitCode"
+                    Write-Info "   This is a critical step required before service creation."
+                    Write-Info "   Review the log for details: $logFile"
+                    Write-Host ""
+                    Write-Info "Common causes:"
+                    Write-Info "  • Ollama service not running or models not available"
+                    Write-Info "  • Database connection issues"
+                    Write-Info "  • Missing dependencies in backend environment"
+                    Write-Info "  • Import errors (check PYTHONPATH)"
+                    Write-Host ""
+                    Write-Info "Installation cannot continue without a valid persona."
+                    throw "Persona bootstrap failed"
+                }
+            }
+            else {
+                # Timeout occurred
+                Stop-Job -Job $job -PassThru | Remove-Job -Force
+                
+                if ($attempt -lt $maxAttempts) {
+                    Write-Warning "Persona bootstrap timed out, retrying..."
+                    Start-Sleep -Seconds 5
+                }
+                else {
+                    Write-Host ""
+                    Write-Error "ERROR: Persona bootstrap timed out after 30 minutes"
+                    Write-Info "   This indicates a serious issue with the system."
+                    Write-Info "   Review the log for details: $logFile"
+                    Write-Host ""
+                    Write-Info "Common causes:"
+                    Write-Info "  • Ollama service not responding"
+                    Write-Info "  • Models not loaded (check: ollama list)"
+                    Write-Info "  • Insufficient system resources (CPU/RAM/GPU)"
+                    Write-Info "  • Database connection hanging"
+                    Write-Host ""
+                    Write-Info "Installation cannot continue without a valid persona."
+                    throw "Persona bootstrap timed out"
+                }
+            }
+            
+            $attempt++
         }
-        else {
-            Write-Error "Persona bootstrap failed (exit code: $LASTEXITCODE)"
-            Write-Info "Check log file for details: $logFile"
-            throw "Persona bootstrap failed"
+        
+        if (-not $success) {
+            throw "Persona bootstrap failed after $maxAttempts attempts"
         }
     }
     finally {

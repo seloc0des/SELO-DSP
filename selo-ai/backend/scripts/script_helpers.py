@@ -88,18 +88,9 @@ def get_script_app_context(mock_mode: bool = False) -> Dict[str, Any]:
         logger.info("Initializing script context with production services")
         
         # initialize_services is now async, so we need to run it in an event loop
-        # For scripts, always create a fresh event loop to avoid conflicts
+        # NOTE: This helper is for standalone scripts, not async scheduled jobs.
+        # Scheduled jobs should directly await initialize_services to avoid event loop conflicts.
         import asyncio
-        
-        # Close any existing event loop and create a fresh one
-        # This ensures we don't conflict with any loops from imports
-        try:
-            old_loop = asyncio.get_event_loop()
-            if old_loop and not old_loop.is_closed():
-                # Don't close it, just create a new one and use it
-                logger.debug("Existing event loop found, creating new one for script")
-        except RuntimeError:
-            pass
         
         # Create a completely fresh event loop for this script
         loop = asyncio.new_event_loop()
@@ -261,7 +252,42 @@ class ScriptContext:
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Exit context and cleanup services."""
         if self.services and not self.mock_mode:
-            # Cleanup any resources if needed
+            # Cleanup background tasks to prevent script from hanging
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+                
+                # Cancel background monitoring tasks if present
+                health_monitor_task = self.services.get("health_monitor_task")
+                if health_monitor_task and not health_monitor_task.done():
+                    health_monitor_task.cancel()
+                    logger.debug("Cancelled health monitoring task")
+                
+                memory_consolidation_task = self.services.get("memory_consolidation_task")
+                if memory_consolidation_task and not memory_consolidation_task.done():
+                    memory_consolidation_task.cancel()
+                    logger.debug("Cancelled memory consolidation task")
+                
+                # Cancel all remaining pending tasks in the event loop
+                pending = asyncio.all_tasks(loop)
+                for task in pending:
+                    if not task.done():
+                        task.cancel()
+                
+                # Give tasks a brief moment to clean up
+                if pending:
+                    try:
+                        loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                    except Exception:
+                        pass  # Ignore cleanup errors
+                
+                # Close the event loop to ensure clean exit
+                loop.close()
+                logger.debug("Event loop closed")
+                
+            except Exception as e:
+                logger.warning(f"Error during cleanup: {e}")
+            
             logger.info("Script context cleanup completed")
         
         if exc_type:
