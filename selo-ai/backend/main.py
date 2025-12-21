@@ -697,15 +697,15 @@ async def initialize_services():
         # Both tiers use the same model set, differentiated by token budgets
         model_lock = {
             "standard": {
-                "conversational": ["llama3:8b", "llama3.1:8b", "qwen2.5:7b", "qwen2.5:3b"],
-                "analytical": ["qwen2.5:3b", "qwen2.5:7b"],
-                "reflection": ["qwen2.5:3b", "qwen2.5:7b"],
+                "conversational": ["llama3:8b", "llama3.1:8b", "qwen2.5:3b"],
+                "analytical": ["qwen2.5:3b"],
+                "reflection": ["qwen2.5:3b"],
                 "embedding": ["nomic-embed-text"],
             },
             "high": {
-                "conversational": ["llama3:8b", "llama3.1:8b", "qwen2.5:7b", "qwen2.5:3b"],
-                "analytical": ["qwen2.5:3b", "qwen2.5:7b", "qwen2.5:7b-instruct"],
-                "reflection": ["qwen2.5:3b", "qwen2.5:7b", "qwen2.5:7b-instruct"],
+                "conversational": ["llama3:8b", "llama3.1:8b", "qwen2.5:3b"],
+                "analytical": ["qwen2.5:3b"],
+                "reflection": ["qwen2.5:3b"],
                 "embedding": ["nomic-embed-text"],
             },
         }

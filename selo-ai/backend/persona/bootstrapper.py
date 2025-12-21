@@ -145,6 +145,14 @@ class PersonaBootstrapper:
         self.persona_repo = persona_repo
         self.user_repo = user_repo
         self.conversation_repo = conversation_repo
+        
+        # Detect system tier for tier-specific optimizations
+        try:
+            self._system_profile = detect_system_profile()
+            self._is_standard_tier = self._system_profile.get("tier") == "standard"
+        except Exception:
+            logger.warning("Failed to detect system tier, assuming standard tier for safety")
+            self._is_standard_tier = True
 
     async def ensure_persona(self) -> Optional[Dict[str, Any]]:
         """
@@ -815,6 +823,49 @@ class PersonaBootstrapper:
         if isinstance(traits_obj, list):
             return _normalize_locked(traits_obj)
         return []
+
+    def _normalize_trait_categories_for_standard_tier(self, traits: List[Dict[str, Any]]) -> None:
+        """
+        Auto-correct common category mistakes for standard tier installations.
+        
+        Standard tier uses qwen2.5:1.5b which occasionally generates grammatical
+        variations of valid categories (e.g., "ethics" instead of "ethical").
+        This normalization ensures first-attempt success without retry overhead.
+        
+        Only applied on standard tier systems to avoid unnecessary processing on
+        high-performance installations where the model performs reliably.
+        """
+        if not self._is_standard_tier:
+            return
+        
+        category_corrections = {
+            "ethics": "ethical",
+            "ethic": "ethical",
+            "cognitive": "cognition",
+            "cognize": "cognition",
+            "affective": "affect",
+            "societal": "social",
+            "socially": "social",
+        }
+        
+        corrected_count = 0
+        for trait in traits:
+            if not isinstance(trait, dict):
+                continue
+            
+            category = trait.get("category", "").lower().strip()
+            if category in category_corrections:
+                original_category = category
+                trait["category"] = category_corrections[category]
+                corrected_count += 1
+                logger.info(
+                    f"Standard tier auto-correction: trait category '{original_category}' → '{trait['category']}'"
+                )
+        
+        if corrected_count > 0:
+            logger.info(
+                f"Applied {corrected_count} category correction(s) for standard tier qwen2.5:1.5b model output"
+            )
 
     def _validate_trait_entries(self, traits: List[Dict[str, Any]]) -> List[str]:
         violations: List[str] = []
@@ -2089,6 +2140,10 @@ Write your complete reflection in ENGLISH now:"""
                             f"Bootstrap traits attempt {attempt + 1}: Traits missing required fields at indices {invalid}; retrying..."
                         )
                         continue
+
+                    # Apply standard tier category normalization before validation
+                    # This prevents retry overhead by auto-correcting common qwen2.5:1.5b variations
+                    self._normalize_trait_categories_for_standard_tier(trait_entries)
 
                     trait_violations = self._validate_trait_entries(trait_entries)
                     if trait_violations:
