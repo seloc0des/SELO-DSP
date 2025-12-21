@@ -50,7 +50,7 @@ set_tier_values() {
     # Standard tier (8GB GPU or unknown)
     export TIER_REFLECTION_NUM_PREDICT=640
     export TIER_REFLECTION_MAX_TOKENS=640
-    export TIER_REFLECTION_WORD_MAX=250
+    export TIER_REFLECTION_WORD_MAX=500
     export TIER_REFLECTION_WORD_MIN=80
     export TIER_ANALYTICAL_NUM_PREDICT=640
     export TIER_CHAT_NUM_PREDICT=1024
