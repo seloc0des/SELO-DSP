@@ -927,7 +927,7 @@ EOF
   fi
 
   if ! grep -q '^REFLECTION_WORD_MAX=' "$be_env"; then
-    echo "REFLECTION_WORD_MAX=${TIER_REFLECTION_WORD_MAX:-500}" >> "$be_env"
+    echo "REFLECTION_WORD_MAX=${TIER_REFLECTION_WORD_MAX:-150}" >> "$be_env"
   fi
 
   if ! grep -q '^REFLECTION_TEMPERATURE=' "$be_env"; then
@@ -979,7 +979,13 @@ EOF
     echo "OLLAMA_NUM_PARALLEL=1" >> "$be_env"
   fi
   if ! grep -q '^OLLAMA_MAX_LOADED_MODELS=' "$be_env"; then
-    echo "OLLAMA_MAX_LOADED_MODELS=2" >> "$be_env"
+    # Tier-aware: standard tier (8GB) can only handle 1 model in VRAM safely
+    # High tier (12GB+) can handle 2-3 models
+    local max_models=1
+    if [ "${PERFORMANCE_TIER:-standard}" = "high" ]; then
+      max_models=2
+    fi
+    echo "OLLAMA_MAX_LOADED_MODELS=$max_models" >> "$be_env"
   fi
 
   if grep -q '^REFLECTION_LLM_TIMEOUT_S=' "$be_env"; then
@@ -1114,9 +1120,9 @@ finalize_service_env() {
   
   # Set word count validation limit based on hardware tier
   if sudo grep -q '^REFLECTION_WORD_MAX=' "$svc_env"; then
-    sudo sed -i -E "s|^REFLECTION_WORD_MAX=.*|REFLECTION_WORD_MAX=${TIER_REFLECTION_WORD_MAX:-500}|" "$svc_env" || true
+    sudo sed -i -E "s|^REFLECTION_WORD_MAX=.*|REFLECTION_WORD_MAX=${TIER_REFLECTION_WORD_MAX:-150}|" "$svc_env" || true
   else
-    echo "REFLECTION_WORD_MAX=${TIER_REFLECTION_WORD_MAX:-500}" | sudo tee -a "$svc_env" >/dev/null
+    echo "REFLECTION_WORD_MAX=${TIER_REFLECTION_WORD_MAX:-150}" | sudo tee -a "$svc_env" >/dev/null
   fi
   
   # Set Reports directory path for boot directives
@@ -1137,9 +1143,9 @@ finalize_service_env() {
     fi
     # Set word count validation limit based on hardware tier
     if grep -q '^REFLECTION_WORD_MAX=' "$SCRIPT_DIR/backend/.env"; then
-      sed -i -E "s|^REFLECTION_WORD_MAX=.*|REFLECTION_WORD_MAX=${TIER_REFLECTION_WORD_MAX:-500}|" "$SCRIPT_DIR/backend/.env" || true
+      sed -i -E "s|^REFLECTION_WORD_MAX=.*|REFLECTION_WORD_MAX=${TIER_REFLECTION_WORD_MAX:-150}|" "$SCRIPT_DIR/backend/.env" || true
     else
-      echo "REFLECTION_WORD_MAX=${TIER_REFLECTION_WORD_MAX:-500}" >> "$SCRIPT_DIR/backend/.env"
+      echo "REFLECTION_WORD_MAX=${TIER_REFLECTION_WORD_MAX:-150}" >> "$SCRIPT_DIR/backend/.env"
     fi
     # Mirror reflection temperature override (align with processing layer at 0.35)
     if grep -q '^REFLECTION_TEMPERATURE=' "$SCRIPT_DIR/backend/.env"; then
@@ -1307,29 +1313,7 @@ verify_gpu_acceleration() {
   if [ "$failures" -eq 0 ]; then
     echo "All warmed models passed GPU verification. Details logged to $verify_log"
   else
-    echo ""
-    echo "========================================="
-    echo "    ⚠️  GPU Verification Warning"
-    echo "========================================="
-    echo "One or more models failed GPU verification."
-    echo ""
-    if [ "${PERFORMANCE_TIER:-standard}" = "standard" ]; then
-      echo "Standard tier systems may experience:"
-      echo "  • Slower initial model loading"
-      echo "  • CPU fallback for some operations"
-      echo "  • Longer response times during warmup"
-      echo ""
-      echo "This is normal for 8GB GPU systems under load."
-      echo "The system will continue to function but may need"
-      echo "additional time for the first few operations."
-    else
-      echo "High tier systems should have full GPU acceleration."
-      echo "Please check your GPU drivers and CUDA installation."
-    fi
-    echo ""
-    echo "Detailed logs: $verify_log"
-    echo "========================================="
-    echo ""
+    echo "One or more models failed GPU verification. See $verify_log for details."
   fi
 }
 
@@ -1394,25 +1378,29 @@ OVREOF
             num_ctx=16384
             num_parallel=2
             keep_alive="1h"
-            echo "  → High-end GPU detected: 16K context, 2 parallel requests"
+            max_loaded_models=3
+            echo "  → High-end GPU detected: 16K context, 2 parallel requests, 3 models max"
         elif [ "$gpu_vram" -ge 12000 ]; then
             # 12-16GB GPU: High performance
             num_ctx=16384
             num_parallel=2
             keep_alive="45m"
-            echo "  → Mid-high GPU detected: 16K context, 2 parallel requests"
+            max_loaded_models=2
+            echo "  → Mid-high GPU detected: 16K context, 2 parallel requests, 2 models max"
         elif [ "$gpu_vram" -ge 8000 ]; then
-            # 8-12GB GPU: Balanced
+            # 8-12GB GPU: Balanced - CRITICAL: limit to 1 model in VRAM
             num_ctx=8192
             num_parallel=1
             keep_alive="30m"
-            echo "  → Standard GPU detected: 8K context, 1 parallel request"
+            max_loaded_models=1
+            echo "  → Standard GPU detected: 8K context, 1 parallel request, 1 model max"
         else
             # <8GB GPU: Conservative
             num_ctx=4096
             num_parallel=1
             keep_alive="15m"
-            echo "  → Low VRAM GPU detected: 4K context, conservative settings"
+            max_loaded_models=1
+            echo "  → Low VRAM GPU detected: 4K context, conservative settings, 1 model max"
         fi
         
         sudo bash -c "cat >> '$OL_OVERRIDE'" <<OVREOF
@@ -1421,7 +1409,7 @@ Environment=OLLAMA_NUM_GPU=1
 Environment=OLLAMA_GPU_LAYERS=-1
 
 # VRAM Optimization - use maximum available VRAM
-Environment=OLLAMA_MAX_LOADED_MODELS=3
+Environment=OLLAMA_MAX_LOADED_MODELS=${max_loaded_models:-3}
 Environment=OLLAMA_MAX_VRAM=${max_vram}
 
 # Context Window - optimized for detected VRAM
@@ -1582,14 +1570,8 @@ export CONVERSATIONAL_MODEL_VAL
     pull_model_with_retry() {
         local model="$1"
         local description="$2"
-        local max_attempts=5
+        local max_attempts=3
         local attempt=1
-        
-        # Tier-aware timeout: standard tier gets more time for slower GPUs
-        local pull_timeout=300  # 5 minutes default
-        if [ "${PERFORMANCE_TIER:-standard}" = "standard" ]; then
-            pull_timeout=600  # 10 minutes for standard tier
-        fi
         
         echo "Ensuring $description '$model' is available..."
         
@@ -1602,13 +1584,13 @@ export CONVERSATIONAL_MODEL_VAL
         # Try to pull with retries
         while [ $attempt -le $max_attempts ]; do
             echo "Downloading $description (attempt $attempt/$max_attempts)..."
-            if timeout $pull_timeout "$OLLAMA_BIN" pull "$model" >/dev/null 2>&1; then
+            if "$OLLAMA_BIN" pull "$model" >/dev/null 2>&1; then
                 echo "✓ Successfully downloaded $description '$model'"
                 return 0
             fi
             if [ $attempt -lt $max_attempts ]; then
-                echo "Download failed, retrying in 10 seconds..."
-                sleep 10
+                echo "Download failed, retrying in 5 seconds..."
+                sleep 5
             fi
             attempt=$((attempt + 1))
         done
