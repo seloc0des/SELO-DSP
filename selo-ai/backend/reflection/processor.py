@@ -4480,6 +4480,9 @@ Please regenerate your reflection following these identity constraints strictly.
                     'metadata': metadata_blob or {},
                 }
                 
+                # Extract user name from metadata if available
+                user_name = metadata_blob.get('user_name') if metadata_blob else None
+                
                 # Replace [User] placeholder with actual user name if provided
                 if user_name and isinstance(user_name, str):
                     def _replace_user_placeholder(text: str) -> str:
