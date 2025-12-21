@@ -2806,8 +2806,8 @@ main() {
         exit 1
     fi
     
-    # Check RAM (16GB recommended)
-    if ! check_ram 16; then
+    # Check RAM (15GB minimum - accounts for systems with 15.xGB that round down)
+    if ! check_ram 15; then
         echo "Installation aborted due to insufficient RAM."
         exit 1
     fi
