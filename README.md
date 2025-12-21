@@ -149,26 +149,36 @@ SELO AI is an autonomous artificial intelligence system that learns and evolves 
 
 ## System Requirements
 
-### Minimum (8GB GPU)
-- **OS:** Linux (Ubuntu 20.04+) or Windows 10/11
-- **RAM:** 16GB
-- **GPU:** 8GB VRAM (NVIDIA GTX 1070, RTX 3060, etc.)
-- **Storage:** 20GB free space
-- **CPU:** 4+ cores
+### ⚠️ HIGH-TIER HARDWARE REQUIRED
 
-### Recommended (16GB GPU)
-- **OS:** Linux with systemd or Windows 10/11
-- **RAM:** 32GB
-- **GPU:** 16GB VRAM (NVIDIA RTX 4080, RTX 3090, etc.)
-- **Storage:** 50GB SSD
-- **CPU:** 8+ cores (Ryzen 7/Intel i7 or better)
+**SELO DSP now requires high-performance hardware for reliable operation.**
+
+Standard tier installations (8GB GPU, 16GB RAM) have been discontinued due to:
+- 66% installation failure rate during persona bootstrap
+- Severe performance degradation (5-15 second delays per model swap)
+- Memory pressure causing timeouts and system crashes
+
+### Minimum Requirements (HIGH-TIER)
+- **OS:** Linux (Ubuntu 20.04+) or Windows 10/11
+- **RAM:** 32GB minimum
+- **GPU:** 16GB VRAM minimum (NVIDIA with CUDA support)
+  - Examples: RTX 3090, RTX 4060 Ti 16GB, RTX 4080, RTX 4090, A4000, A5000
+- **Storage:** 40GB free space minimum
+- **CPU:** 8+ cores (Ryzen 7/9, Intel i7/i9 or better)
+
+### Optimal Configuration
+- **RAM:** 64GB
+- **GPU:** 24GB+ VRAM (RTX 4090, A5000, etc.)
+- **Storage:** 100GB SSD
+- **CPU:** 16+ cores (Ryzen 9, Intel i9)
 
 ### Software Dependencies
 - **Python:** 3.10+
 - **Node.js:** 18+
 - **PostgreSQL:** 13+ (Linux) or SQLite (Windows - auto-configured)
 - **Ollama:** Latest version
-- **CUDA:** 11.8+ (for GPU acceleration, optional)
+- **CUDA:** 11.8+ (REQUIRED for GPU acceleration)
+- **NVIDIA Drivers:** Latest version supporting your GPU
 
 ## Installation
 
@@ -209,14 +219,17 @@ Set-ExecutionPolicy Bypass -Scope Process -Force
 > **Windows Note:** See [README-Windows.md](selo-ai/README-Windows.md) for detailed Windows installation instructions and troubleshooting.
 
 The installer will:
-1. Detect your GPU and RAM
-2. Install Python and Node dependencies
-3. Set up PostgreSQL database
-4. Pull Ollama models (llama3:8b, qwen2.5:3b, nomic-embed-text)
-5. Build the frontend
-6. Configure systemd service
+1. **Validate hardware meets high-tier requirements (NEW)**
+2. Detect your GPU configuration and optimize settings
+3. Install Python and Node dependencies
+4. Set up PostgreSQL database
+5. Pull Ollama models (llama3:8b, qwen2.5:3b, qwen2.5:1.5b, nomic-embed-text)
+6. Build the frontend
+7. Configure systemd service
 
 **Installation time:** 20-40 minutes (mostly model downloads)
+
+⚠️ **The installer will abort if your system does not meet the minimum requirements.**
 
 ### Manual Installation
 
@@ -262,19 +275,24 @@ AGENT_LOOP_ENABLED=true
 AGENT_LOOP_INTERVAL_SECONDS=900  # 15 minutes
 ```
 
-### Tier System
+### Performance Configuration
 
-The installer auto-detects your hardware:
+The installer validates your hardware and configures optimal settings:
 
-**High-Performance Tier (≥12GB GPU):**
-- Reflection: 650 tokens, 80-250 words
+**High-Performance Tier (16GB+ GPU) - ONLY SUPPORTED CONFIGURATION:**
+- Reflection: 650 tokens, 100-250 words
 - Analytical: 1536 tokens
-- Richer philosophical depth
+- Chat context: 16K tokens
+- Multiple models loaded in VRAM simultaneously
+- 2-3 parallel requests supported
 
-**Standard Tier (<12GB GPU):**
-- Reflection: 640 tokens, 80-250 words
-- Analytical: 640 tokens
-- Optimized for 8GB GPU
+**Why 16GB minimum?**
+- LLM models require simultaneous loading:
+  - llama3:8b: ~4.5GB VRAM
+  - qwen2.5:3b (analytical): ~2GB VRAM
+  - qwen2.5:3b (reflection): ~2GB VRAM
+  - nomic-embed-text: ~300MB VRAM
+  - Total: ~9GB with 7GB safety buffer
 
 ## Usage
 
@@ -490,9 +508,9 @@ echo $CUDA_VISIBLE_DEVICES  # Should be 0
 - Check token budgets in `.env`
 
 **High memory usage:**
-- Standard tier uses ~4.5GB VRAM
-- High tier uses ~6-8GB VRAM
-- Adjust `CHAT_NUM_CTX` if needed
+- High-tier configuration uses ~9-12GB VRAM for optimal performance
+- Multiple models remain loaded to eliminate cold-start delays
+- Adjust `OLLAMA_MAX_LOADED_MODELS` if you have 24GB+ VRAM
 
 ### Logs
 

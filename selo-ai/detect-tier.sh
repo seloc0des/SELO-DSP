@@ -1,36 +1,49 @@
 #!/bin/bash
 # Centralized hardware tier detection script
-# This ensures consistent tier detection across all scripts
+# UPDATED: Now enforces HIGH-TIER ONLY requirements for installation
+# Standard tier installations are no longer supported due to reliability issues
 
-# Auto-detect hardware performance tier (2-tier system)
+# HIGH-TIER MINIMUM REQUIREMENTS:
+# - GPU: 16GB VRAM (NVIDIA with CUDA support)
+# - RAM: 32GB
+# - Disk: 40GB free space
+# - CPU: 8+ cores
+
+# Auto-detect hardware performance tier (high-tier only)
 detect_performance_tier() {
   local gpu_mem=0
-  local tier="standard"
+  local tier="insufficient"
   
   # Try nvidia-smi first (NVIDIA GPUs)
   if command -v nvidia-smi >/dev/null 2>&1; then
     gpu_mem=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -n1 | tr -d ' ')
     
-    if [ -n "$gpu_mem" ] && [ "$gpu_mem" -ge 12000 ]; then
+    # HIGH-TIER REQUIREMENT: 16GB+ VRAM
+    if [ -n "$gpu_mem" ] && [ "$gpu_mem" -ge 16000 ]; then
       tier="high"
     else
-      tier="standard"
+      tier="insufficient"
     fi
   else
     # Try rocm-smi for AMD GPUs
     if command -v rocm-smi >/dev/null 2>&1; then
       gpu_mem=$(rocm-smi --showmeminfo vram --csv 2>/dev/null | grep -oP '\d+' | head -n1)
-      if [ -n "$gpu_mem" ] && [ "$gpu_mem" -ge 12000 ]; then
+      # HIGH-TIER REQUIREMENT: 16GB+ VRAM
+      if [ -n "$gpu_mem" ] && [ "$gpu_mem" -ge 16000 ]; then
         tier="high"
       else
-        tier="standard"
+        tier="insufficient"
       fi
     else
-      tier="standard"
+      # No GPU detected
+      tier="insufficient"
     fi
   fi
   
   echo "$tier"
+  
+  # Export GPU memory for detailed error messages
+  export DETECTED_GPU_VRAM="$gpu_mem"
 }
 
 # Set tier-based configuration values
@@ -38,23 +51,18 @@ set_tier_values() {
   local tier="$1"
   
   if [ "$tier" = "high" ]; then
-    # High-performance tier (12GB+ GPU)
+    # High-performance tier (16GB+ GPU) - ONLY SUPPORTED CONFIGURATION
     export TIER_REFLECTION_NUM_PREDICT=650
     export TIER_REFLECTION_MAX_TOKENS=650
     export TIER_REFLECTION_WORD_MAX=250
-    export TIER_REFLECTION_WORD_MIN=80
+    export TIER_REFLECTION_WORD_MIN=100
     export TIER_ANALYTICAL_NUM_PREDICT=1536
     export TIER_CHAT_NUM_PREDICT=2048
     export TIER_CHAT_NUM_CTX=8192
   else
-    # Standard tier (8GB GPU or unknown)
-    export TIER_REFLECTION_NUM_PREDICT=640
-    export TIER_REFLECTION_MAX_TOKENS=640
-    export TIER_REFLECTION_WORD_MAX=250
-    export TIER_REFLECTION_WORD_MIN=80
-    export TIER_ANALYTICAL_NUM_PREDICT=640
-    export TIER_CHAT_NUM_PREDICT=1024
-    export TIER_CHAT_NUM_CTX=8192
+    # Insufficient hardware - installation will abort
+    echo "ERROR: Hardware does not meet high-tier requirements" >&2
+    return 1
   fi
   
   export PERFORMANCE_TIER="$tier"
@@ -98,22 +106,29 @@ if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
   if ! load_cached_tier; then
     # No valid cache, detect tier
     PERFORMANCE_TIER=$(detect_performance_tier)
-    set_tier_values "$PERFORMANCE_TIER"
+    if ! set_tier_values "$PERFORMANCE_TIER"; then
+      echo "Hardware requirements not met. Exiting." >&2
+      exit 1
+    fi
     cache_tier
   fi
   
   # Output tier information
   if [ -t 1 ]; then
     # Interactive terminal - show formatted output
-    echo "Performance Tier: $PERFORMANCE_TIER"
-    echo "Configuration:"
-    echo "  TIER_REFLECTION_NUM_PREDICT=$TIER_REFLECTION_NUM_PREDICT"
-    echo "  TIER_REFLECTION_MAX_TOKENS=$TIER_REFLECTION_MAX_TOKENS"
-    echo "  TIER_REFLECTION_WORD_MAX=$TIER_REFLECTION_WORD_MAX"
-    echo "  TIER_REFLECTION_WORD_MIN=$TIER_REFLECTION_WORD_MIN"
-    echo "  TIER_ANALYTICAL_NUM_PREDICT=$TIER_ANALYTICAL_NUM_PREDICT"
-    echo "  TIER_CHAT_NUM_PREDICT=$TIER_CHAT_NUM_PREDICT"
-    echo "  TIER_CHAT_NUM_CTX=$TIER_CHAT_NUM_CTX"
+    if [ "$PERFORMANCE_TIER" = "high" ]; then
+      echo "✅ Performance Tier: $PERFORMANCE_TIER (REQUIREMENTS MET)"
+      echo "Configuration:"
+      echo "  TIER_REFLECTION_NUM_PREDICT=$TIER_REFLECTION_NUM_PREDICT"
+      echo "  TIER_REFLECTION_MAX_TOKENS=$TIER_REFLECTION_MAX_TOKENS"
+      echo "  TIER_REFLECTION_WORD_MAX=$TIER_REFLECTION_WORD_MAX"
+      echo "  TIER_REFLECTION_WORD_MIN=$TIER_REFLECTION_WORD_MIN"
+      echo "  TIER_ANALYTICAL_NUM_PREDICT=$TIER_ANALYTICAL_NUM_PREDICT"
+      echo "  TIER_CHAT_NUM_PREDICT=$TIER_CHAT_NUM_PREDICT"
+      echo "  TIER_CHAT_NUM_CTX=$TIER_CHAT_NUM_CTX"
+    else
+      echo "❌ Performance Tier: $PERFORMANCE_TIER (INSUFFICIENT)"
+    fi
   else
     # Non-interactive - just output tier
     echo "$PERFORMANCE_TIER"
@@ -122,7 +137,9 @@ else
   # Being sourced - just load/detect without output
   if ! load_cached_tier; then
     PERFORMANCE_TIER=$(detect_performance_tier)
-    set_tier_values "$PERFORMANCE_TIER"
+    if ! set_tier_values "$PERFORMANCE_TIER"; then
+      return 1
+    fi
     cache_tier
   fi
 fi

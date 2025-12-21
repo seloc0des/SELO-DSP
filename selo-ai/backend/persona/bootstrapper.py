@@ -2090,33 +2090,22 @@ Write your complete reflection in ENGLISH now:"""
                         f"{prompt}"
                     )
 
-                # Tier-specific model selection for traits generation
-                # Standard tier: Use qwen2.5:3b for better completion reliability (1.5b prone to truncated JSON)
-                # High tier: Use qwen2.5:1.5b for faster generation (more stable resources prevent truncation)
-                # Seed: Always use qwen2.5:3b (best performance: 64% success, 0% auto-fix)
+                # Use qwen2.5:1.5b for traits (original working configuration)
+                # Use qwen2.5:3b for seed (best performance)
+                # Standard tier gets category auto-correction to handle 1.5b variations
                 model_override = None
                 if stage == "traits":
-                    if self._is_standard_tier:
-                        model_override = None  # Use default qwen2.5:3b
-                        logger.info(
-                            "Bootstrap %s attempt %s/%s using qwen2.5:3b for standard tier reliability (temp=%.2f)",
-                            stage,
-                            attempt + 1,
-                            max_attempts,
-                            temperature,
-                        )
-                    else:
-                        model_override = "qwen2.5:1.5b"
-                        logger.info(
-                            "Bootstrap %s attempt %s/%s using qwen2.5:1.5b for high tier (temp=%.2f)",
-                            stage,
-                            attempt + 1,
-                            max_attempts,
-                            temperature,
-                        )
+                    model_override = "qwen2.5:1.5b"
+                    logger.info(
+                        "Bootstrap %s attempt %s/%s using qwen2.5:1.5b (temp=%.2f)",
+                        stage,
+                        attempt + 1,
+                        max_attempts,
+                        temperature,
+                    )
                 else:
                     logger.info(
-                        "Bootstrap %s attempt %s/%s using ANALYTICAL model (temp=%.2f)",
+                        "Bootstrap %s attempt %s/%s using qwen2.5:3b (temp=%.2f)",
                         stage,
                         attempt + 1,
                         max_attempts,

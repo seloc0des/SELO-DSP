@@ -233,15 +233,16 @@ fi
 
 # Display tier information
 if [ "$PERFORMANCE_TIER" = "high" ]; then
-  echo "✨ High-Performance Tier Activated"
+  echo "✨ High-Performance Tier Confirmed"
   echo "   - Reflection capacity: 650 tokens (~650 words max)"
   echo "   - Enhanced philosophical depth during persona bootstrap"
   echo "   - Extended chat context: 8192 tokens"
+  echo "   - Multiple models loaded in VRAM simultaneously"
 else
-  echo "⚡ Standard Tier Activated (optimized for 8GB GPU)"
-  echo "   - Reflection capacity: 640 tokens (~500 words max)"
-  echo "   - Context window: 8192 tokens (qwen2.5 native capacity)"
-  echo "   - Full-quality few-shot examples preserved"
+  echo "❌ ERROR: Tier detection returned non-high tier: $PERFORMANCE_TIER"
+  echo "   This should not happen after hardware validation."
+  echo "   Installation cannot proceed."
+  exit 1
 fi
 echo ""
 
@@ -1372,35 +1373,25 @@ OVREOF
         local num_parallel=1
         local keep_alive="30m"
         
-        # Optimize based on VRAM tiers
-        if [ "$gpu_vram" -ge 16000 ]; then
-            # 16GB+ GPU: Maximum performance (16K allows all layers on GPU)
+        # Optimize based on VRAM tiers (HIGH-TIER ONLY: 16GB+)
+        if [ "$gpu_vram" -ge 24000 ]; then
+            # 24GB+ GPU: Maximum performance
+            num_ctx=16384
+            num_parallel=3
+            keep_alive="1h"
+            max_loaded_models=4
+            echo "  → Ultra high-end GPU detected: 16K context, 3 parallel requests, 4 models max"
+        elif [ "$gpu_vram" -ge 16000 ]; then
+            # 16-24GB GPU: High performance (minimum supported configuration)
             num_ctx=16384
             num_parallel=2
             keep_alive="1h"
             max_loaded_models=3
             echo "  → High-end GPU detected: 16K context, 2 parallel requests, 3 models max"
-        elif [ "$gpu_vram" -ge 12000 ]; then
-            # 12-16GB GPU: High performance
-            num_ctx=16384
-            num_parallel=2
-            keep_alive="45m"
-            max_loaded_models=2
-            echo "  → Mid-high GPU detected: 16K context, 2 parallel requests, 2 models max"
-        elif [ "$gpu_vram" -ge 8000 ]; then
-            # 8-12GB GPU: Balanced - CRITICAL: limit to 1 model in VRAM
-            num_ctx=8192
-            num_parallel=1
-            keep_alive="30m"
-            max_loaded_models=1
-            echo "  → Standard GPU detected: 8K context, 1 parallel request, 1 model max"
         else
-            # <8GB GPU: Conservative
-            num_ctx=4096
-            num_parallel=1
-            keep_alive="15m"
-            max_loaded_models=1
-            echo "  → Low VRAM GPU detected: 4K context, conservative settings, 1 model max"
+            # This should never happen after hardware validation
+            echo "  → ERROR: GPU has insufficient VRAM (${gpu_vram}MB). Installation should have been blocked."
+            return 1
         fi
         
         sudo bash -c "cat >> '$OL_OVERRIDE'" <<OVREOF
@@ -2791,24 +2782,130 @@ install_service() {
     echo "✓ Systemd unit template installed"
 }
 
+# Comprehensive high-tier hardware validation
+validate_high_tier_requirements() {
+    echo "========================================="
+    echo "   HIGH-TIER Hardware Requirements Check"
+    echo "========================================="
+    echo "SELO DSP now requires HIGH-TIER hardware for reliable operation."
+    echo "Standard tier installations have been discontinued due to:"
+    echo "  • 66% failure rate during persona bootstrap"
+    echo "  • Severe performance degradation from model swapping"
+    echo "  • Memory pressure causing timeouts and crashes"
+    echo ""
+    echo "Checking system against high-tier requirements..."
+    echo ""
+    
+    local requirements_met=true
+    local failures=()
+    
+    # 1. GPU Check: 16GB+ VRAM required
+    echo "[1/4] Checking GPU VRAM..."
+    local gpu_vram=0
+    if command -v nvidia-smi >/dev/null 2>&1; then
+        gpu_vram=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -n1 | tr -d ' ')
+        if [ -n "$gpu_vram" ]; then
+            local gpu_vram_gb=$((gpu_vram / 1024))
+            if [ "$gpu_vram" -ge 16000 ]; then
+                echo "  ✅ GPU VRAM: ${gpu_vram_gb}GB (requirement: 16GB+)"
+            else
+                echo "  ❌ GPU VRAM: ${gpu_vram_gb}GB (requirement: 16GB+)"
+                failures+=("GPU has only ${gpu_vram_gb}GB VRAM, need 16GB minimum")
+                requirements_met=false
+            fi
+        else
+            echo "  ❌ Could not detect GPU VRAM"
+            failures+=("Unable to detect GPU VRAM")
+            requirements_met=false
+        fi
+    else
+        echo "  ❌ nvidia-smi not found - NVIDIA GPU with CUDA required"
+        failures+=("NVIDIA GPU with CUDA support required")
+        requirements_met=false
+    fi
+    
+    # 2. RAM Check: 32GB required
+    echo "[2/4] Checking system RAM..."
+    local total_ram_gb
+    total_ram_gb=$(free -g 2>/dev/null | awk '/^Mem:/{print $2}')
+    if [ -n "$total_ram_gb" ] && [ "$total_ram_gb" -ge 32 ]; then
+        echo "  ✅ System RAM: ${total_ram_gb}GB (requirement: 32GB+)"
+    else
+        echo "  ❌ System RAM: ${total_ram_gb}GB (requirement: 32GB+)"
+        failures+=("System has only ${total_ram_gb}GB RAM, need 32GB minimum")
+        requirements_met=false
+    fi
+    
+    # 3. Disk Space Check: 40GB required
+    echo "[3/4] Checking available disk space..."
+    local available_gb
+    available_gb=$(df -BG "${SCRIPT_DIR}" 2>/dev/null | tail -1 | awk '{print $4}' | sed 's/G//')
+    if [ -n "$available_gb" ] && [ "$available_gb" -ge 40 ]; then
+        echo "  ✅ Disk space: ${available_gb}GB available (requirement: 40GB+)"
+    else
+        echo "  ❌ Disk space: ${available_gb}GB available (requirement: 40GB+)"
+        failures+=("Only ${available_gb}GB disk space available, need 40GB minimum")
+        requirements_met=false
+    fi
+    
+    # 4. CPU Check: 8+ cores recommended
+    echo "[4/4] Checking CPU cores..."
+    local cpu_cores
+    cpu_cores=$(nproc 2>/dev/null || echo "0")
+    if [ "$cpu_cores" -ge 8 ]; then
+        echo "  ✅ CPU cores: ${cpu_cores} (requirement: 8+)"
+    else
+        echo "  ⚠️  CPU cores: ${cpu_cores} (recommended: 8+)"
+        echo "     Installation will continue but performance may be degraded"
+    fi
+    
+    echo ""
+    echo "========================================="
+    
+    if [ "$requirements_met" = false ]; then
+        echo "❌ HARDWARE REQUIREMENTS NOT MET"
+        echo "========================================="
+        echo ""
+        echo "The following requirements are not satisfied:"
+        for failure in "${failures[@]}"; do
+            echo "  • $failure"
+        done
+        echo ""
+        echo "HIGH-TIER MINIMUM SPECIFICATIONS:"
+        echo "  • GPU: 16GB VRAM (NVIDIA RTX 3090, 4080, 4090, A4000, A5000, etc.)"
+        echo "  • RAM: 32GB system memory"
+        echo "  • Disk: 40GB free space"
+        echo "  • CPU: 8+ cores (Ryzen 7/9, Intel i7/i9 or better)"
+        echo ""
+        echo "Why these requirements?"
+        echo "  • Multiple LLM models must remain loaded in VRAM simultaneously"
+        echo "  • Persona bootstrap requires significant memory headroom"
+        echo "  • Model downloads and builds need substantial disk space"
+        echo "  • Multi-core CPU significantly reduces bootstrap time"
+        echo ""
+        echo "Standard tier (8GB GPU, 16GB RAM) is no longer supported due to:"
+        echo "  • 66% installation failure rate at persona bootstrap"
+        echo "  • 5-15 second delays per model swap (only 1 model fits in VRAM)"
+        echo "  • Frequent OOM errors and system instability"
+        echo ""
+        echo "Installation cannot proceed with current hardware."
+        echo "========================================="
+        return 1
+    else
+        echo "✅ ALL HARDWARE REQUIREMENTS MET"
+        echo "========================================="
+        echo "System is ready for SELO DSP installation."
+        echo ""
+        return 0
+    fi
+}
+
 # Main installation flow
 main() {
     check_sudo
     
-    # Pre-flight checks: Verify system meets minimum requirements
-    echo "========================================="
-    echo "    Pre-Installation System Checks"
-    echo "========================================="
-    
-    # Check disk space (20GB minimum for models and data)
-    if ! check_disk_space 20; then
-        echo "Installation aborted due to insufficient disk space."
-        exit 1
-    fi
-    
-    # Check RAM (15GB minimum - accounts for systems with 15.xGB that round down)
-    if ! check_ram 15; then
-        echo "Installation aborted due to insufficient RAM."
+    # Pre-flight checks: Validate high-tier hardware requirements
+    if ! validate_high_tier_requirements; then
         exit 1
     fi
     
