@@ -1,3 +1,4 @@
+import asyncio
 import os
 import random
 from typing import Any, Dict, List, Optional, Tuple
@@ -200,7 +201,17 @@ async def generate_first_intro_from_directive(
         async def _go():
             return await llm_router.route(**kwargs)
 
-        res = await _go()
+        # Enforce timeout if provided
+        if timeout_s and timeout_s > 0:
+            try:
+                res = await asyncio.wait_for(_go(), timeout=timeout_s)
+            except asyncio.TimeoutError:
+                import logging
+                logger = logging.getLogger("selo.conversation.openings")
+                logger.warning(f"Dynamic intro generation timed out after {timeout_s}s")
+                return ""
+        else:
+            res = await _go()
 
         text = (res or {}).get("content") or (res or {}).get("completion") or ""
         text = (text or "").strip()

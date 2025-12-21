@@ -156,7 +156,9 @@ const getDefaultPersona = async () => {
 const getPersonaPresentation = async (_userId, personaId) => {
   try {
     const API_URL = await resolveBaseUrl();
-    const response = await axios.get(`${API_URL}/api/persona/presentation/${encodeURIComponent(personaId)}`);
+    const response = await axios.get(`${API_URL}/api/persona/presentation/${encodeURIComponent(personaId)}`, {
+      timeout: 15000
+    });
     return response.data;
   } catch (error) {
     console.error('Failed to fetch persona presentation:', error);
