@@ -84,6 +84,38 @@ class PersonaIntegration:
         if self.persona_engine:
             await self.persona_engine.close()
     
+    # === Helper Methods ===
+    
+    def _is_bootstrap_reflection(
+        self,
+        event_data: Dict[str, Any],
+        reflection: Optional[Dict[str, Any]] = None
+    ) -> bool:
+        """
+        Centralized check to determine if a reflection is from bootstrap process.
+        
+        Args:
+            event_data: Event data containing metadata
+            reflection: Optional reflection object with additional metadata
+            
+        Returns:
+            True if reflection is from bootstrap, False otherwise
+        """
+        # Check event_data trigger_source
+        trigger_source = event_data.get("trigger_source")
+        if trigger_source and str(trigger_source).lower() == "bootstrap":
+            return True
+        
+        # Check reflection metadata if available
+        if reflection:
+            result = reflection.get("result") or {}
+            metadata = result.get("metadata", {})
+            reflection_trigger = metadata.get("trigger_source")
+            if reflection_trigger and str(reflection_trigger).lower() == "bootstrap":
+                return True
+        
+        return False
+    
     # === Event Handler Registration ===
     
     async def _register_event_handlers(self):
@@ -184,8 +216,7 @@ class PersonaIntegration:
                 return
             
             # Skip bootstrap-triggered reflections from seeding evolution
-            trigger_source = event_data.get("trigger_source")
-            if trigger_source and trigger_source.lower() == "bootstrap":
+            if self._is_bootstrap_reflection(event_data):
                 logger.info(f"Skipping persona evolution scheduling for bootstrap reflection {reflection_id}")
                 return
 
@@ -276,8 +307,7 @@ class PersonaIntegration:
                             reflection_metadata = result_dict.get('metadata', reflection_metadata)
 
                 # Skip bootstrap reflections or reflections without trait deltas
-                trigger_source = (reflection_metadata or {}).get('trigger_source') or event_data.get('trigger_source')
-                if trigger_source and str(trigger_source).lower() == "bootstrap":
+                if self._is_bootstrap_reflection(event_data, reflection):
                     logger.info(f"Skipping scheduled evolution for bootstrap reflection {trigger_id}")
                     return
 

@@ -62,21 +62,34 @@ class GoalManager:
 
     async def create_plan_step(
         self,
-        goal: Dict[str, Any],
-        description: str,
-        priority: float = 0.5,
-        target_time: Optional[datetime] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        persona_id: str,
+        step_payload: Dict[str, Any],
     ) -> Dict[str, Any]:
-        step_payload = {
-            "goal_id": goal["id"],
-            "persona_id": goal["persona_id"],
-            "user_id": goal["user_id"],
-            "description": description,
-            "priority": priority,
-            "metadata": metadata or {},
-        }
-        if target_time:
+        """Create a new plan step tied to persona or goal."""
+        # FIXED: Check for duplicate steps before creating
+        description = step_payload.get("description", "")
+        if description:
+            # Get existing steps for deduplication check
+            existing_steps = await self._plan_repo.list_pending_steps(persona_id)
+            
+            if self._step_exists(existing_steps, description):
+                logger.info(
+                    f"Step with similar description already exists for persona {persona_id}, skipping creation"
+                )
+                # Return the existing similar step
+                for step in existing_steps:
+                    if GoalManager._normalize_title(step.get("description", "")) == \
+                       GoalManager._normalize_title(description):
+                        return step
+        
+        step_payload.setdefault("persona_id", persona_id)
+        step_payload.setdefault("status", "pending")
+        step_payload.setdefault("priority", 0.5)
+        step_payload.setdefault("extra_metadata", {})
+        step_payload["created_at"] = datetime.now(timezone.utc)
+
+        target_time = step_payload.get("target_time")
+        if target_time and isinstance(target_time, datetime):
             if target_time.tzinfo is None:
                 target_time = target_time.replace(tzinfo=timezone.utc)
             step_payload["target_time"] = target_time
@@ -254,7 +267,8 @@ class GoalManager:
         goal = await self._goal_repo.get_goal(goal_id)
         if not goal:
             return
-        steps = await self._plan_repo.list_pending_steps(goal["persona_id"])
+        # FIXED: Get steps for THIS specific goal, not all pending steps for the persona
+        steps = await self._plan_repo.list_steps_for_goal(goal_id)
         total_steps = len(steps)
         completed = 0
         for step in steps:

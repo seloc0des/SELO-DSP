@@ -259,6 +259,107 @@ class ValidationHelper:
         return violations
     
     @staticmethod
+    def validate_score(
+        score: Any,
+        score_name: str = "score",
+        min_value: float = 0.0,
+        max_value: float = 1.0,
+        allow_none: bool = False
+    ) -> Tuple[bool, Optional[float], Optional[str]]:
+        """
+        Validate that a score is within expected bounds.
+        
+        Args:
+            score: Score value to validate
+            score_name: Name of the score for error messages
+            min_value: Minimum allowed value (inclusive)
+            max_value: Maximum allowed value (inclusive)
+            allow_none: Whether None is acceptable
+            
+        Returns:
+            Tuple of (is_valid, normalized_score, error_message)
+            
+        Example:
+            >>> is_valid, normalized, error = ValidationHelper.validate_score(1.5, "confidence")
+            >>> print(error)
+            "confidence must be between 0.0 and 1.0, got 1.5"
+        """
+        if score is None:
+            if allow_none:
+                return True, None, None
+            return False, None, f"{score_name} cannot be None"
+        
+        try:
+            normalized = float(score)
+        except (TypeError, ValueError):
+            return False, None, f"{score_name} must be numeric, got {type(score).__name__}"
+        
+        if normalized < min_value or normalized > max_value:
+            return False, None, f"{score_name} must be between {min_value} and {max_value}, got {normalized}"
+        
+        return True, normalized, None
+    
+    @staticmethod
+    def validate_scores_dict(
+        data: Dict[str, Any],
+        score_fields: List[str],
+        context: str = ""
+    ) -> Tuple[bool, Dict[str, float], List[str]]:
+        """
+        Validate multiple score fields in a dictionary.
+        
+        Args:
+            data: Dictionary containing scores
+            score_fields: List of field names to validate
+            context: Context label for error messages
+            
+        Returns:
+            Tuple of (all_valid, normalized_scores, error_messages)
+        """
+        normalized = {}
+        errors = []
+        all_valid = True
+        
+        for field in score_fields:
+            if field in data:
+                is_valid, norm_score, error = ValidationHelper.validate_score(
+                    data[field],
+                    score_name=f"{context}.{field}" if context else field
+                )
+                if not is_valid:
+                    errors.append(error)
+                    all_valid = False
+                else:
+                    normalized[field] = norm_score
+        
+        return all_valid, normalized, errors
+    
+    @staticmethod
+    def clamp_score(
+        score: Any,
+        min_value: float = 0.0,
+        max_value: float = 1.0,
+        default: float = 0.5
+    ) -> float:
+        """
+        Clamp a score to valid range, with fallback to default.
+        
+        Args:
+            score: Score value to clamp
+            min_value: Minimum allowed value
+            max_value: Maximum allowed value
+            default: Default value if score is invalid
+            
+        Returns:
+            Clamped score value
+        """
+        try:
+            value = float(score)
+            return max(min_value, min(max_value, value))
+        except (TypeError, ValueError):
+            return default
+    
+    @staticmethod
     def log_violations(
         violations: List[str],
         stage: str,

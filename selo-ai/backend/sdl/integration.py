@@ -76,12 +76,28 @@ class SDLIntegration:
         Returns:
             Summary of processing results
         """
-        # Skip if already processing
-        if reflection_id in self.processing_reflections:
-            logger.info(f"Reflection {reflection_id} already being processed, skipping")
+        # FIXED: Check database for existing learnings (idempotency check)
+        existing_learnings = await self._check_already_processed(
+            source_type="reflection",
+            source_id=reflection_id
+        )
+        
+        if existing_learnings:
+            logger.info(
+                f"Reflection {reflection_id} already processed with {len(existing_learnings)} learnings, skipping"
+            )
             return {
                 "status": "skipped",
-                "reason": "already_processing"
+                "reason": "already_processed",
+                "existing_learnings_count": len(existing_learnings)
+            }
+        
+        # Also check in-memory processing set for concurrent requests
+        if reflection_id in self.processing_reflections:
+            logger.info(f"Reflection {reflection_id} currently being processed by another request, skipping")
+            return {
+                "status": "skipped",
+                "reason": "concurrent_processing"
             }
             
         self.processing_reflections.add(reflection_id)
@@ -102,18 +118,31 @@ class SDLIntegration:
                 "processing_time_seconds": processing_time
             }
             
-            # Trigger learning event if available
+            # Trigger learning event if available with verification
             if self.event_system and learnings:
-                await self.event_system.process_event(
-                    event_type=EventType.LEARNING_CREATED,
-                    event_data={
-                        "reflection_id": reflection_id,
-                        "learnings_count": len(learnings),
-                        "domains": list(set(l.get("domain", "") for l in learnings)),
-                        "importance": max([l.get("importance", 0) for l in learnings], default=0.5)
-                    },
-                    user_id=learnings[0].get("user_id") if learnings else None
-                )
+                try:
+                    event_result = await self.event_system.process_event(
+                        event_type=EventType.LEARNING_CREATED,
+                        event_data={
+                            "reflection_id": reflection_id,
+                            "learnings_count": len(learnings),
+                            "domains": list(set(l.get("domain", "") for l in learnings)),
+                            "importance": max([l.get("importance", 0) for l in learnings], default=0.5)
+                        },
+                        user_id=learnings[0].get("user_id") if learnings else None
+                    )
+                    # FIXED: Verify event was accepted
+                    if not event_result:
+                        logger.warning(
+                            f"Event system did not accept LEARNING_CREATED event for reflection {reflection_id}"
+                        )
+                    else:
+                        logger.debug(f"LEARNING_CREATED event emitted successfully for reflection {reflection_id}")
+                except Exception as event_error:
+                    logger.error(
+                        f"Failed to emit LEARNING_CREATED event for reflection {reflection_id}: {event_error}",
+                        exc_info=True
+                    )
             
             logger.info(f"Processed reflection {reflection_id}, extracted {len(learnings)} learnings")
             return result
@@ -144,7 +173,23 @@ class SDLIntegration:
         Returns:
             Summary of processing results
         """
-        # Skip if already processing
+        # FIXED: Check database for existing learnings (idempotency check)
+        existing_learnings = await self._check_already_processed(
+            source_type="conversation",
+            source_id=conversation_id
+        )
+        
+        if existing_learnings:
+            logger.info(
+                f"Conversation {conversation_id} already processed with {len(existing_learnings)} learnings, skipping"
+            )
+            return {
+                "status": "skipped",
+                "reason": "already_processed",
+                "existing_learnings_count": len(existing_learnings)
+            }
+        
+        # Also check in-memory processing set for concurrent requests
         if conversation_id in self.processing_conversations:
             logger.info(f"Conversation {conversation_id} already being processed, skipping")
             return {
@@ -204,24 +249,51 @@ class SDLIntegration:
             # Remove from processing set
             self.processing_conversations.discard(conversation_id)
     
-    async def consolidate_user_learnings(self, user_id: str) -> Dict[str, Any]:
+    async def consolidate_user_learnings(
+        self, 
+        user_id: str,
+        batch_size: int = 100
+    ) -> Dict[str, Any]:
         """
-        Consolidate all learnings for a user across domains.
+        Consolidate all learnings for a user across domains with pagination.
         
         Args:
             user_id: ID of the user to consolidate learnings for
+            batch_size: Number of learnings to fetch per batch (default: 100)
             
         Returns:
             Consolidated insights
         """
         try:
-            # Get all domains for this user
-            learnings = await self.learning_repo.get_learnings_for_user(
-                user_id=user_id,
-                limit=500  # Get a large sample to identify domains
-            )
+            # FIXED: Use pagination to handle large learning sets
+            all_learnings = []
+            offset = 0
+            total_fetched = 0
+            max_learnings = 1000  # Safety limit
             
-            domains = list(set(learning.domain for learning in learnings))
+            while total_fetched < max_learnings:
+                batch = await self.learning_repo.get_learnings_for_user(
+                    user_id=user_id,
+                    limit=batch_size,
+                    offset=offset
+                )
+                
+                if not batch:
+                    break
+                
+                all_learnings.extend(batch)
+                total_fetched += len(batch)
+                offset += batch_size
+                
+                # Stop if we got fewer than requested (end of data)
+                if len(batch) < batch_size:
+                    break
+                
+                logger.debug(f"Fetched {total_fetched} learnings for user {user_id} so far...")
+            
+            logger.info(f"Retrieved {len(all_learnings)} learnings for user {user_id} consolidation")
+            
+            domains = list(set(learning.domain for learning in all_learnings))
             
             # Consolidate each domain
             domain_insights = {}
@@ -346,6 +418,47 @@ class SDLIntegration:
             }
     
     # Internal methods
+    
+    async def _check_already_processed(
+        self,
+        source_type: str,
+        source_id: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Check if a reflection or conversation has already been processed.
+        
+        This provides database-backed idempotency checking that survives restarts,
+        unlike the in-memory processing sets.
+        
+        Args:
+            source_type: Type of source ("reflection" or "conversation")
+            source_id: ID of the source
+            
+        Returns:
+            List of existing learnings if already processed, empty list otherwise
+        """
+        try:
+            # Query for learnings from this source
+            existing = await self.learning_repo.get_learnings_for_user(
+                user_id="",  # We'll get all users for this source
+                source_type=source_type,
+                limit=100  # Reasonable limit
+            )
+            
+            # Filter to exact source_id match
+            matching = [
+                learning for learning in existing
+                if getattr(learning, 'source_id', None) == source_id
+            ]
+            
+            return [l.to_dict() if hasattr(l, 'to_dict') else l for l in matching]
+            
+        except Exception as e:
+            logger.warning(
+                f"Failed to check if {source_type} {source_id} already processed: {e}. "
+                "Proceeding with processing to be safe."
+            )
+            return []  # On error, allow processing to proceed
     
     async def _register_event_handlers(self):
         """Register event handlers with the event system."""

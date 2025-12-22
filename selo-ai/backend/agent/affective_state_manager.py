@@ -6,6 +6,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
+from ..config.thresholds import SystemThresholds
 from ..db.repositories.agent_state import AffectiveStateRepository
 from ..db.repositories.persona import PersonaRepository
 
@@ -62,12 +63,20 @@ class AffectiveStateManager:
             logger.warning("No affective state found for persona %s", persona_id)
             return None
 
-        # Start from latest snapshot but normalize temporal fields for DB update
-        updated_payload = {**latest}
-        # Ensure last_update is a proper datetime; let created_at/updated_at be managed by the ORM
-        updated_payload.pop("created_at", None)
-        updated_payload.pop("updated_at", None)
-        updated_payload["last_update"] = datetime.now(timezone.utc)
+        # Start from latest snapshot
+        # FIXED: Keep only the fields needed for update, don't pass read-only timestamp fields
+        updated_payload = {
+            "id": latest.get("id"),
+            "persona_id": latest.get("persona_id"),
+            "user_id": latest.get("user_id"),
+            "mood_vector": latest.get("mood_vector", {}),
+            "energy": latest.get("energy", 0.5),
+            "stress": latest.get("stress", 0.4),
+            "confidence": latest.get("confidence", 0.6),
+            "state_metadata": latest.get("state_metadata", {}),
+            "homeostasis_active": latest.get("homeostasis_active", True),
+            "last_update": datetime.now(timezone.utc),
+        }
         baseline_values = {
             "energy": float(latest.get("energy", 0.5) or 0.5),
             "stress": float(latest.get("stress", 0.4) or 0.4),
@@ -78,17 +87,16 @@ class AffectiveStateManager:
 
         for key in ("energy", "stress", "confidence"):
             if key in adjustment:
-                try:
-                    target = float(adjustment[key])
-                except (TypeError, ValueError):
-                    continue
-                current = baseline_values[key]
-                # Treat the supplied value as a +/- relative shift around the current level
-                # with gentle easing toward the proposed target.
-                delta = max(-0.3, min(0.3, target - 0.5))
-                blended = current + delta
-                updated_payload[key] = max(0.0, min(1.0, blended))
-                delta_log[key] = round(updated_payload[key] - current, 4)
+                raw_delta = float(adjustment[key] or 0.0)
+                # FIXED: Use centralized threshold configuration
+                max_delta = getattr(
+                    SystemThresholds, 
+                    f"AFFECTIVE_{key.upper()}_DELTA_MAX",
+                    0.3  # fallback
+                )
+                clamped_delta = max(-max_delta, min(max_delta, raw_delta))
+                updated_payload[key] = max(0.0, min(1.0, baseline_values[key] + clamped_delta))
+                delta_log[key] = round(updated_payload[key] - baseline_values[key], 4)
 
         if "mood_vector" in adjustment:
             mood_vector = latest.get("mood_vector", {}) or {}
@@ -120,16 +128,23 @@ class AffectiveStateManager:
         latest = await self._state_repo.get_latest_state(persona_id)
         if not latest:
             return None
-        decay_factor = 0.1
-        updated_payload = {**latest}
-        # Strip ISO timestamp fields coming from to_dict and set a fresh last_update
-        updated_payload.pop("created_at", None)
-        updated_payload.pop("updated_at", None)
-        updated_payload["last_update"] = datetime.now(timezone.utc)
-
-        updated_payload["energy"] = latest.get("energy", 0.5) * (1 - decay_factor) + 0.5 * decay_factor
-        updated_payload["stress"] = latest.get("stress", 0.5) * (1 - decay_factor) + 0.5 * decay_factor
-        updated_payload["confidence"] = latest.get("confidence", 0.6) * (1 - decay_factor) + 0.6 * decay_factor
+        
+        # FIXED: Use centralized decay factor configuration
+        decay_factor = SystemThresholds.HOMEOSTASIS_DECAY_FACTOR
+        
+        # FIXED: Build payload with only necessary fields
+        updated_payload = {
+            "id": latest.get("id"),
+            "persona_id": latest.get("persona_id"),
+            "user_id": latest.get("user_id"),
+            "mood_vector": latest.get("mood_vector", {}),
+            "energy": latest.get("energy", 0.5) * (1 - decay_factor) + 0.5 * decay_factor,
+            "stress": latest.get("stress", 0.5) * (1 - decay_factor) + 0.5 * decay_factor,
+            "confidence": latest.get("confidence", 0.6) * (1 - decay_factor) + 0.6 * decay_factor,
+            "state_metadata": latest.get("state_metadata", {}),
+            "homeostasis_active": latest.get("homeostasis_active", True),
+            "last_update": datetime.now(timezone.utc),
+        }
 
         state = await self._state_repo.upsert_state(updated_payload)
         logger.debug("Applied homeostasis decay for persona %s", persona_id)
@@ -147,25 +162,69 @@ class AffectiveStateManager:
         )
 
     async def _collect_trait_baseline(self, persona_id: str) -> Dict[str, Any]:
+        """
+        Collect trait baseline for affective state initialization.
+        
+        Returns dict with empathy, confidence, energy values. Falls back to
+        sensible defaults if traits cannot be loaded.
+        """
+        # FIXED: Use centralized baseline configuration
+        default_baseline = {
+            "empathy": 0.5,  # No specific config, use default
+            "confidence": SystemThresholds.AFFECTIVE_CONFIDENCE_BASELINE,
+            "energy": SystemThresholds.AFFECTIVE_ENERGY_BASELINE,
+        }
+        
         try:
             persona = await self._persona_repo.get_persona(
                 persona_id=persona_id,
                 include_traits=True,
             )
-            if not persona or not getattr(persona, "traits", None):
-                return {}
-            traits = getattr(persona, "traits")
+            
+            if not persona:
+                logger.warning(
+                    "Persona %s not found when collecting trait baseline, using defaults",
+                    persona_id
+                )
+                return default_baseline
+            
+            traits = getattr(persona, "traits", None)
+            if not traits:
+                logger.info(
+                    "Persona %s has no traits yet, using default baseline",
+                    persona_id
+                )
+                return default_baseline
+            
+            # Extract trait values
             if isinstance(traits, list):
-                values = {t.name: t.value for t in traits if hasattr(t, "name")}
+                values = {t.name: t.value for t in traits if hasattr(t, "name") and hasattr(t, "value")}
             elif isinstance(traits, dict):
                 values = traits
             else:
-                values = {}
-            return {
-                "empathy": float(values.get("empathy", 0.0) or 0.0),
-                "confidence": float(values.get("confidence", 0.6) or 0.6),
-                "energy": float(values.get("vitality", 0.5) or values.get("energy", 0.5) or 0.5),
+                logger.warning(
+                    "Persona %s has unexpected traits type %s, using defaults",
+                    persona_id, type(traits).__name__
+                )
+                return default_baseline
+            
+            # Build baseline from traits with fallback to defaults
+            baseline = {
+                "empathy": float(values.get("empathy", default_baseline["empathy"]) or default_baseline["empathy"]),
+                "confidence": float(values.get("confidence", default_baseline["confidence"]) or default_baseline["confidence"]),
+                "energy": float(values.get("vitality", values.get("energy", default_baseline["energy"])) or default_baseline["energy"]),
             }
+            
+            logger.debug(
+                "Collected trait baseline for persona %s: empathy=%.2f, confidence=%.2f, energy=%.2f",
+                persona_id, baseline["empathy"], baseline["confidence"], baseline["energy"]
+            )
+            
+            return baseline
+            
         except Exception as exc:
-            logger.debug("Failed to collect baseline traits for %s: %s", persona_id, exc)
-            return {}
+            logger.warning(
+                "Failed to collect baseline traits for %s: %s. Using defaults.",
+                persona_id, exc, exc_info=True
+            )
+            return default_baseline

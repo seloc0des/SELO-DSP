@@ -10,6 +10,8 @@ import logging
 import os
 from pathlib import Path
 from typing import Dict, List, Optional
+from collections import Counter
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +61,62 @@ class BootSeedDirectiveSelector:
         logger.debug(f"Using boot directives fallback path: {fallback_path}")
         return str(fallback_path)
     
+    def _parse_blocks(self, block_text: str) -> List[Dict[str, str]]:
+        """Parse directives from a block that may be either:
+        - A single '---' section: title on first line, directive on subsequent lines
+        - A legacy list of repeated pairs: Title line, then 'Directive:' line(s), separated by blank lines
+        """
+        block_text = (block_text or "").strip()
+        if not block_text:
+            return []
+
+        # If this block contains multiple directives, it is in the legacy list format.
+        # Example signature: a 'Directive:' line followed later by another 'Directive:' line.
+        if "\nDirective:" in block_text:
+            directives_local: List[Dict[str, str]] = []
+            lines = block_text.splitlines()
+            i = 0
+            while i < len(lines):
+                # Skip blank lines
+                while i < len(lines) and not lines[i].strip():
+                    i += 1
+                if i >= len(lines):
+                    break
+
+                title = lines[i].strip()
+                i += 1
+                # Next non-empty line must begin with Directive:
+                while i < len(lines) and not lines[i].strip():
+                    i += 1
+                if i >= len(lines):
+                    break
+                if not lines[i].lstrip().startswith("Directive:"):
+                    # Not a valid directive entry; skip this line as a title candidate.
+                    continue
+
+                directive_lines = [lines[i].strip()]
+                i += 1
+                # Consume until blank line
+                while i < len(lines) and lines[i].strip():
+                    directive_lines.append(lines[i].strip())
+                    i += 1
+
+                directives_local.append({
+                    "title": title,
+                    "content": "\n".join(directive_lines).strip(),
+                })
+            return directives_local
+
+        # Otherwise treat it as a single '---' section (title + directive body)
+        lines = block_text.splitlines()
+        if len(lines) < 2:
+            return []
+        title = lines[0].strip()
+        directive_content = "\n".join(lines[1:]).strip()
+        if not directive_content.startswith("Directive:"):
+            return []
+        return [{"title": title, "content": directive_content}]
+
     def _parse_directives_file(self) -> List[Dict[str, str]]:
         """
         Parse the boot seed directives markdown file.
@@ -76,29 +134,49 @@ class BootSeedDirectiveSelector:
             logger.error(f"Error reading boot seed directives file: {e}")
             return self._get_fallback_directives()
         
-        directives = []
+        directives: List[Dict[str, str]] = []
         sections = content.split('---')
-        
         for section in sections:
             section = section.strip()
             if not section:
                 continue
-                
-            lines = section.split('\n')
-            if len(lines) < 2:
+            directives.extend(self._parse_blocks(section))
+
+        # If no '---' delimiters were present, content.split('---') yields one section.
+        # In that case _parse_blocks() may have returned a single giant directive if the file
+        # accidentally contained multiple entries without delimiters. Detect and recover.
+        if len(directives) == 1:
+            only = directives[0]
+            body = only.get("content") or ""
+            if "\nDirective:" in body:
+                # Re-parse the entire file as legacy list format.
+                directives = self._parse_blocks(content)
+
+        # Deduplicate exact directives by normalized content while preserving order
+        def _norm(s: str) -> str:
+            return re.sub(r"\s+", " ", (s or "").strip().lower())
+
+        seen = set()
+        deduped: List[Dict[str, str]] = []
+        for d in directives:
+            c = d.get("content") or ""
+            key = _norm(c)
+            if not key or key in seen:
                 continue
-                
-            title = lines[0].strip()
-            directive_content = '\n'.join(lines[1:]).strip()
-            
-            # Skip if this doesn't look like a directive
-            if not directive_content.startswith('Directive:'):
-                continue
-                
-            directives.append({
-                'title': title,
-                'content': directive_content
-            })
+            seen.add(key)
+            deduped.append(d)
+
+        # Disambiguate duplicate titles deterministically (stable across runs)
+        counts = Counter((d.get("title") or "").strip() for d in deduped)
+        if any(v > 1 for v in counts.values()):
+            running = Counter()
+            for d in deduped:
+                t = (d.get("title") or "").strip()
+                if counts.get(t, 0) > 1 and t:
+                    running[t] += 1
+                    d["title"] = f"{t} ({running[t]})"
+
+        directives = deduped
         
         if not directives:
             logger.warning("No valid directives found in file, using fallback")

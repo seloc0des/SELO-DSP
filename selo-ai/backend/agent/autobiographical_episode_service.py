@@ -173,9 +173,15 @@ class AutobiographicalEpisodeService:
         if not narrative_text:
             logger.warning("Episode payload has empty narrative text.")
             return None
+        
+        # FIXED: Validate word count and reject episodes outside acceptable range
         word_count = len(narrative_text.split())
-        if word_count < 120 or word_count > 360:
-            logger.debug("Episode narrative word count out of expected range (%d words).", word_count)
+        if word_count < 120:
+            logger.warning("Episode narrative too short (%d words, minimum 120). Rejecting.", word_count)
+            return None
+        if word_count > 360:
+            logger.warning("Episode narrative too long (%d words, maximum 360). Rejecting.", word_count)
+            return None
 
         try:
             payload["importance"] = float(payload.get("importance", 0.6))

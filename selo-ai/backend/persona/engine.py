@@ -46,6 +46,11 @@ try:
 except ImportError:
     from backend.utils.numeric_utils import clamp
 
+try:
+    from ..constraints.validation_helpers import ValidationHelper
+except ImportError:
+    from backend.constraints.validation_helpers import ValidationHelper
+
 logger = logging.getLogger("selo.persona.engine")
 
 
@@ -56,6 +61,12 @@ class PersonaEngine:
     This class handles persona evolution, trait updates, and persona generation
     based on learnings from the SDL module and other sources.
     """
+    
+    # Valid trait categories
+    VALID_TRAIT_CATEGORIES = {
+        "cognitive", "emotional", "social", "learning", 
+        "personality", "communication", "general"
+    }
     
     def __init__(
         self,
@@ -275,11 +286,17 @@ class PersonaEngine:
             # Record evolution
             try:
                 if changes_applied:
+                    # Validate and clamp confidence score
+                    confidence = ValidationHelper.clamp_score(
+                        data.get("confidence", 0.6),
+                        default=0.6
+                    )
+                    
                     await self.persona_repo.create_evolution({
                         "persona_id": persona_id,
                         "source_type": "scheduled_reassessment",
                         "reasoning": data.get("rationale", "Scheduled reassessment"),
-                        "confidence": float(data.get("confidence", 0.6) or 0.6),
+                        "confidence": confidence,
                         "impact_score": 0.6 if trait_changes or persona_updates else 0.3,
                         "changes": {"persona": persona_updates, "traits": trait_changes},
                         "timestamp": utc_now(),
@@ -484,7 +501,16 @@ class PersonaEngine:
                     "message": "No significant changes detected"
                 }
             
-            # Create evolution record
+            # Create evolution record with validated scores
+            confidence = ValidationHelper.clamp_score(
+                changes.get("confidence", 0.0),
+                default=0.7
+            )
+            impact_score = ValidationHelper.clamp_score(
+                changes.get("impact_score", 0.0),
+                default=0.5
+            )
+            
             evolution_data = {
                 "persona_id": persona_id,
                 "changes": changes.get("changes", {}),
@@ -493,8 +519,8 @@ class PersonaEngine:
                     "learning_ids": learning_ids,
                     "learning_count": len(learning_texts)
                 },
-                "confidence": changes.get("confidence", 0.0),
-                "impact_score": changes.get("impact_score", 0.0),
+                "confidence": confidence,
+                "impact_score": impact_score,
                 "source_type": "learning",
                 "approved": True  # Auto-approve changes
             }
@@ -593,10 +619,15 @@ class PersonaEngine:
                         "reason": reason
                     })
                 else:
-                    # Create new trait if missing - use provided category or default to 'cognition'
-                    if not category:
-                        category = "cognition"
-                        logger.info(f"Creating new trait '{name}' without category, defaulting to 'cognition'")
+                    # FIXED: Validate and normalize category before creating new trait
+                    if not category or category not in self.VALID_TRAIT_CATEGORIES:
+                        # Default to cognitive for thinking-related traits, general otherwise
+                        default_category = "cognitive" if any(term in name.lower() for term in ["think", "reason", "analyz", "cognit"]) else "general"
+                        logger.warning(
+                            f"Creating new trait '{name}' with invalid/missing category '{category}'. "
+                            f"Defaulting to '{default_category}'"
+                        )
+                        category = default_category
                     
                     await self.persona_repo.create_trait({
                         "persona_id": persona_id,

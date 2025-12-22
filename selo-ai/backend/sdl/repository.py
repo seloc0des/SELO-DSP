@@ -45,20 +45,12 @@ class LearningRepository:
             # Add concepts if provided
             if 'concepts' in learning_data and learning_data['concepts']:
                 for concept_name in learning_data['concepts']:
-                    # Find or create concept
-                    concept = await self.get_concept_by_name(
-                        learning_data['user_id'], 
-                        concept_name
+                    # FIXED: Use get-or-create pattern with proper handling of race conditions
+                    concept = await self._get_or_create_concept(
+                        session=session,
+                        user_id=learning_data['user_id'],
+                        concept_name=concept_name
                     )
-                    
-                    if not concept:
-                        concept = Concept(
-                            id=str(uuid.uuid4()),
-                            user_id=learning_data['user_id'],
-                            name=concept_name,
-                            description=f"Auto-created concept for {concept_name}"
-                        )
-                        session.add(concept)
                     
                     learning.concepts.append(concept)
             
@@ -181,6 +173,97 @@ class LearningRepository:
         
         logger.info(f"Deleted learning {learning_id}")
         return True
+    
+    async def get_recent_learnings(
+        self,
+        user_id: str,
+        limit: int = 10,
+        domain: Optional[str] = None
+    ) -> List[Learning]:
+        """
+        Get recent learnings for a user, ordered by creation date.
+        This is an alias for get_learnings_for_user with ordering by recency.
+        
+        Args:
+            user_id: User ID
+            limit: Maximum number of learnings to return
+            domain: Optional domain filter
+            
+        Returns:
+            List of recent learning objects
+        """
+        return await self.get_learnings_for_user(
+            user_id=user_id,
+            limit=limit,
+            domain=domain,
+            active_only=True
+        )
+    
+    async def close(self):
+        """Close repository resources."""
+        # Context managers handle session cleanup
+        logger.debug("LearningRepository closed")
+    
+    async def _get_or_create_concept(
+        self,
+        session,
+        user_id: str,
+        concept_name: str
+    ) -> Concept:
+        """
+        Get or create a concept with proper race condition handling.
+        
+        This method handles concurrent concept creation by catching IntegrityError
+        and retrying the get operation.
+        
+        Args:
+            session: Active database session
+            user_id: User ID
+            concept_name: Name of the concept
+            
+        Returns:
+            Existing or newly created Concept object
+        """
+        from sqlalchemy.exc import IntegrityError
+        
+        # Try to get existing concept first
+        query = (
+            select(Concept)
+            .where(
+                and_(
+                    Concept.user_id == user_id,
+                    Concept.name == concept_name
+                )
+            )
+        )
+        result = await session.execute(query)
+        concept = result.scalar_one_or_none()
+        
+        if concept:
+            return concept
+        
+        # Try to create new concept
+        try:
+            concept = Concept(
+                id=str(uuid.uuid4()),
+                user_id=user_id,
+                name=concept_name,
+                description=f"Auto-created concept for {concept_name}"
+            )
+            session.add(concept)
+            await session.flush()  # Flush to detect unique constraint violations
+            return concept
+        except IntegrityError:
+            # Another transaction created this concept - retry get
+            await session.rollback()
+            result = await session.execute(query)
+            concept = result.scalar_one_or_none()
+            if not concept:
+                # This should be extremely rare
+                logger.error(f"Failed to get or create concept {concept_name} for user {user_id}")
+                raise
+            logger.debug(f"Concept {concept_name} created by concurrent transaction, using existing")
+            return concept
     
     # Concept methods
     

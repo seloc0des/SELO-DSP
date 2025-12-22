@@ -783,6 +783,34 @@ class PersonaRepository:
             logger.info(f"Updated evolution {evolution_id}")
             return evolution
     
+    async def delete_evolution(
+        self,
+        evolution_id: str,
+        session: Optional[AsyncSession] = None
+    ) -> bool:
+        """
+        Delete a persona evolution record.
+        
+        Args:
+            evolution_id: Evolution ID to delete
+            session: Optional database session
+            
+        Returns:
+            True if deleted, False if not found
+        """
+        async with get_session(session) as session:
+            # Delete evolution
+            query = delete(PersonaEvolution).where(PersonaEvolution.id == evolution_id)
+            result = await session.execute(query)
+            
+            # Check if deleted
+            if result.rowcount > 0:
+                logger.info(f"Deleted evolution {evolution_id}")
+                return True
+            else:
+                logger.warning(f"Evolution {evolution_id} not found for delete")
+                return False
+    
     # === Advanced operations ===
     
     async def set_default_persona(
