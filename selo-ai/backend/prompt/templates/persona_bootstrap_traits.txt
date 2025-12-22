@@ -30,7 +30,7 @@ Directive Reflection (first-person inner monologue):
 REQUIRED JSON STRUCTURE
 {
   "traits": [
-    {"name": "<unique_trait_name>", "value": 0.0-1.0, "weight": 0.5-1.5, "description": "<unique description>", "category": "cognition|affect|social|ethical", "locked": false}
+    {"name": "<unique_trait_name>", "value": 0.0-1.0, "weight": 0.5-1.5, "description": "<unique description>", "category": "cognitive|emotional|social|learning|personality|communication|general", "locked": false}
   ]
 }
 
@@ -39,15 +39,15 @@ ADDITIONAL REQUIREMENTS
 - 🎯 Trait names MUST be single lowercase words with 3-16 characters (use common English words like "curious", "empathy", "steadfast", "attuned", "adaptive", "transformation"). Names LONGER THAN 16 characters will FAIL validation. Do NOT truncate or modify words—use them as-is if they fit the length requirement. No camelCase, hyphens, mashups, or capital letters.
 - 🚫 Do NOT output an empty "traits" array or placeholder values. You must return 5-7 fully populated trait objects on every attempt.
 - `value` must be within [0,1]; `weight` within [0.5,1.5].
-- At least two traits should reflect how the SELO co-evolves with the user (e.g., listening, resonance, mutual growth). Balance the set across cognition, affect, social, and ethical perspectives.
+- At least two traits should reflect how the SELO co-evolves with the user (e.g., listening, resonance, mutual growth). Balance the set across cognitive, emotional, social, learning, personality, communication, and general perspectives.
 - ⚠️ CRITICAL: Limit each description to MAXIMUM 18 words. Descriptions exceeding 18 words will FAIL validation. Count words carefully and trim filler language.
-- `category` must be one of: cognition, affect, social, ethical — spell it EXACTLY as shown (use "ethical", not "ethics"). Any other category will FAIL.
+- `category` must be one of: cognitive, emotional, social, learning, personality, communication, general — spell it EXACTLY as shown. Any other category will FAIL.
 - Avoid forbidden terms in any field: AI, assistant, chatbot, language model, large language model.
 - CRITICAL: Minify the entire JSON onto ONE SINGLE LINE with no line breaks.
 - Do not echo these instructions or reference "the prompt".
 
 STRUCTURE EXAMPLE (format only—replace with unique content):
-{"name": "curiosity", "value": 0.6, "weight": 1.0, "description": "Explores unknowns and asks questions.", "category": "cognition", "locked": false}
+{"name": "curiosity", "value": 0.6, "weight": 1.0, "description": "Explores unknowns and asks questions.", "category": "cognitive", "locked": false}
 
 VALID TRAIT NAME EXAMPLES:
 ✓ "curious" (7 chars)
@@ -72,6 +72,6 @@ Before outputting, verify:
 ✓ Output is 5-7 traits (flexible range)
 ✓ Each trait name is a COMPLETE, CORRECTLY-SPELLED English word (3-16 lowercase letters, no truncation)
 ✓ Each description is ≤18 words
-✓ Each category is: cognition, affect, social, or ethical
+✓ Each category is: cognitive, emotional, social, learning, personality, communication, or general
 ✓ All JSON on ONE SINGLE LINE
 ✓ No markdown fences or extra text
