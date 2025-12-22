@@ -68,7 +68,7 @@ async def _get_cached_default_persona(persona_integration: PersonaIntegration):
     
     return persona
 
-def _invalidate_persona_cache():
+def _invalidate_persona_cache() -> None:
     """Invalidate persona cache (call after persona updates)."""
     _persona_cache.clear()
     _persona_cache_ttl.clear()

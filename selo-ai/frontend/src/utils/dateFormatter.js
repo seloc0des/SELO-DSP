@@ -3,7 +3,8 @@
  * Provides consistent date/time display across the application
  */
 
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, parseISO, format, isValid } from 'date-fns';
+import { logger } from './logger';
 
 const coerceDate = (value) => {
   if (!value) return null;
@@ -41,7 +42,7 @@ export const formatRelativeTime = (dateString, options = { addSuffix: true }) =>
     if (!date) return 'Unknown time';
     return formatDistanceToNow(date, options);
   } catch (error) {
-    console.error('Error formatting relative time:', error);
+    logger.error('Error formatting relative time:', error);
     return 'Unknown time';
   }
 };
@@ -69,7 +70,7 @@ export const formatAbsoluteTime = (dateString, options = {}) => {
     if (!date) return 'Unknown time';
     return date.toLocaleString('en-US', defaultOptions);
   } catch (error) {
-    console.error('Error formatting absolute time:', error);
+    logger.error('Error formatting absolute time:', error);
     return 'Unknown time';
   }
 };
@@ -115,7 +116,7 @@ export const formatReflectionTimestamp = (dateString) => {
       minute: '2-digit'
     });
   } catch (error) {
-    console.error('Error formatting reflection timestamp:', error);
+    logger.error('Error formatting reflection timestamp:', error);
     return 'Unknown time';
   }
 };

@@ -5,6 +5,8 @@ import { reflectionService } from '../services/reflectionService';
 import { getApiBaseUrl } from '../services/config';
 import { formatRelativeTime } from '../utils/dateFormatter';
 import { io } from 'socket.io-client';
+import { chatLogger as logger } from '../utils/logger';
+import ErrorBoundary from './ErrorBoundary';
 
 // Runtime-resolved API base URL
 const trimTrailingSlash = (s) => s.replace(/\/$/, '');
@@ -96,7 +98,7 @@ const Chat = ({ userId }) => {
         const base = await getApiBaseUrl();
         if (mounted) setApiBase(base);
       } catch (e) {
-        console.warn('Failed to resolve API base URL:', e);
+        logger.warn('Failed to resolve API base URL:', e);
         if (mounted) setApiBase('http://localhost:8000');
       }
     })();
@@ -147,7 +149,7 @@ const Chat = ({ userId }) => {
           }
         }
       } catch (error) {
-        console.warn('[Chat] Failed to load conversation history:', error);
+        logger.warn('Failed to load conversation history:', error);
         // Don't show error to user, just start with empty conversation
       }
     };
@@ -175,7 +177,7 @@ const Chat = ({ userId }) => {
         if (!released && pendingAnswersRef.current.size === 1) {
           // Fallback: if exactly one pending answer exists for this session but the turn_id didn't match,
           // release it to avoid a stuck UI due to rare id mismatch races.
-          try { console.warn('[Reflect] releasing unmatched pending assistant due to single-pending fallback'); } catch (_) {}
+          logger.warn('Releasing unmatched pending assistant due to single-pending fallback');
           const [[k, v]] = Array.from(pendingAnswersRef.current.entries());
           flushPendingAnswer(k, {
             content: v?.content,
@@ -304,7 +306,7 @@ const Chat = ({ userId }) => {
 
       if (!response.ok) {
         const text = await response.text().catch(() => '');
-        try { console.error('[Chat] /chat non-OK', response.status, text); } catch (_) {}
+        logger.error('/chat non-OK', response.status, text);
         throw new Error('Network response was not ok');
       }
 
@@ -337,7 +339,7 @@ const Chat = ({ userId }) => {
         setMessages(prev => [...prev, { role: 'assistant', content: assistantContent, timestamp: assistantTimestamp }]);
       }
     } catch (error) {
-      console.error('[Chat] submit error:', error);
+      logger.error('Submit error:', error);
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: 'Sorry, there was an error processing your request. Please try again.',
@@ -349,91 +351,95 @@ const Chat = ({ userId }) => {
   };
 
   return (
-    <div className="flex h-full w-full">
-      {/* Chat panel (left) */}
-      <div className="flex flex-col flex-1 h-full max-w-2xl min-w-0">
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 mb-4">
-          {!apiBase ? (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center text-gray-500">
-                <p className="text-sm">Loading configuration...</p>
-              </div>
-            </div>
-          ) : messages.length === 0 ? (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center text-gray-500">
-                <p className="text-lg mb-2">Welcome to SELO DSP</p>
-                <p className="text-sm">Start a conversation with your SELO</p>
-              </div>
-            </div>
-          ) : (
-            messages.map((message, index) => {
-              const displayTime = formatRelativeTime(message.timestamp);
-              return (
-                <div
-                  key={index}
-                  className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div
-                    className={`max-w-[75%] rounded-lg p-4 ${
-                      message.role === 'user'
-                        ? 'bg-[var(--color-bg-elev-1)] border border-[var(--color-accent)]/40 text-white'
-                        : 'bg-[var(--color-bg-elev-1)] border border-[var(--color-border)] text-[var(--color-text-secondary)]'
-                    }`}
-                  >
-                    <div className="whitespace-pre-wrap">{message.content}</div>
-                    <div className="mt-2 text-xs text-[var(--color-text-muted)] text-right">{displayTime}</div>
-                  </div>
+    <ErrorBoundary>
+      <div className="flex h-full w-full">
+        {/* Chat panel (left) */}
+        <div className="flex flex-col flex-1 h-full max-w-2xl min-w-0">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 mb-4">
+            {!apiBase ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center text-gray-500">
+                  <p className="text-sm">Loading configuration...</p>
                 </div>
-              );
-            })
-          )}
-          {isLoading && (
-            <div className="flex items-center space-x-2 text-[var(--color-accent)]">
-              <div className="w-2 h-2 bg-[var(--color-accent)] rounded-full animate-pulse"></div>
-              <div className="w-2 h-2 bg-[var(--color-accent)] rounded-full animate-pulse delay-150"></div>
-              <div className="w-2 h-2 bg-[var(--color-accent)] rounded-full animate-pulse delay-300"></div>
-              <span className="ml-2 text-sm">SELO DSP is thinking...</span>
-            </div>
-          )}
-          <div ref={messagesEndRef} />
-        </div>
-        {/* Input area */}
-        <form onSubmit={handleSubmit} className="mt-4">
-          <div className="flex space-x-2">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Type your message..."
-              className="flex-1 bg-[var(--color-bg-elev-1)] border border-[var(--color-border)] rounded-lg px-4 py-2 text-white focus:outline-none"
-              disabled={isLoading}
-            />
-            {messages.length > 0 && (
-              <button
-                type="button"
-                onClick={clearConversation}
-                className="px-4 py-2 bg-[var(--color-bg-elev-1)] hover:bg-[var(--color-bg-elev-2)] text-gray-400 hover:text-white border border-[var(--color-border)] rounded-lg font-medium transition-colors"
-                title="Clear conversation"
-              >
-                Clear
-              </button>
+              </div>
+            ) : messages.length === 0 ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center text-gray-500">
+                  <p className="text-lg mb-2">Welcome to SELO DSP</p>
+                  <p className="text-sm">Start a conversation with your SELO</p>
+                </div>
+              </div>
+            ) : (
+              messages.map((message, index) => {
+                const displayTime = formatRelativeTime(message.timestamp);
+                return (
+                  <div
+                    key={index}
+                    className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div
+                      className={`max-w-[75%] rounded-lg p-4 ${
+                        message.role === 'user'
+                          ? 'bg-[var(--color-bg-elev-1)] border border-[var(--color-accent)]/40 text-white'
+                          : 'bg-[var(--color-bg-elev-1)] border border-[var(--color-border)] text-[var(--color-text-secondary)]'
+                      }`}
+                    >
+                      <div className="whitespace-pre-wrap">{message.content}</div>
+                      <div className="mt-2 text-xs text-[var(--color-text-muted)] text-right">{displayTime}</div>
+                    </div>
+                  </div>
+                );
+              })
             )}
-            <button
-              type="submit"
-              disabled={!input.trim() || isLoading}
-              className="px-6 py-2 bg-[var(--color-bg-elev-1)] hover:bg-[var(--color-bg-elev-2)] text-[var(--color-accent)] border border-[var(--color-accent)]/50 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Send
-            </button>
+            {isLoading && (
+              <div className="flex items-center space-x-2 text-[var(--color-accent)]">
+                <div className="w-2 h-2 bg-[var(--color-accent)] rounded-full animate-pulse"></div>
+                <div className="w-2 h-2 bg-[var(--color-accent)] rounded-full animate-pulse delay-150"></div>
+                <div className="w-2 h-2 bg-[var(--color-accent)] rounded-full animate-pulse delay-300"></div>
+                <span className="ml-2 text-sm">SELO DSP is thinking...</span>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
           </div>
-        </form>
+          {/* Input area */}
+          <form onSubmit={handleSubmit} className="mt-4">
+            <div className="flex space-x-2">
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Type your message..."
+                className="flex-1 bg-[var(--color-bg-elev-1)] border border-[var(--color-border)] rounded-lg px-4 py-2 text-white focus:outline-none"
+                disabled={isLoading}
+              />
+              {messages.length > 0 && (
+                <button
+                  type="button"
+                  onClick={clearConversation}
+                  className="px-4 py-2 bg-[var(--color-bg-elev-1)] hover:bg-[var(--color-bg-elev-2)] text-gray-400 hover:text-white border border-[var(--color-border)] rounded-lg font-medium transition-colors"
+                  title="Clear conversation"
+                >
+                  Clear
+                </button>
+              )}
+              <button
+                type="submit"
+                disabled={!input.trim() || isLoading}
+                className="px-6 py-2 bg-[var(--color-bg-elev-1)] hover:bg-[var(--color-bg-elev-2)] text-[var(--color-accent)] border border-[var(--color-accent)]/50 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Send
+              </button>
+            </div>
+          </form>
+        </div>
+        {/* Reflection panel (right). Hidden on small screens to avoid overflow. */}
+        <div className="hidden md:block md:w-[420px] md:min-w-[320px] md:max-w-[520px] h-full border-l border-[var(--color-border)] bg-[var(--color-bg-elev-1)]">
+          <ErrorBoundary>
+            <ReflectionPanel sessionId={sessionId} messages={messages} />
+          </ErrorBoundary>
+        </div>
       </div>
-      {/* Reflection panel (right). Hidden on small screens to avoid overflow. */}
-      <div className="hidden md:block md:w-[420px] md:min-w-[320px] md:max-w-[520px] h-full border-l border-[var(--color-border)] bg-[var(--color-bg-elev-1)]">
-        <ReflectionPanel sessionId={sessionId} messages={messages} />
-      </div>
-    </div>
+    </ErrorBoundary>
   );
 };
 

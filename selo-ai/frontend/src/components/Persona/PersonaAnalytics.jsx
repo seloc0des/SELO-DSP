@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import personaService from '../../services/personaService';
 import PersonaTraitRadar from './PersonaTraitRadar';
+import { personaLogger as logger } from '../../utils/logger';
 import { formatTraitName } from '../../utils/formatTraitName';
 
 /**
@@ -70,11 +71,11 @@ const PersonaAnalytics = () => {
             }
           } catch (err) {
             // soft fail; UI will retry on next event/user action
-            console.debug('traits refresh failed after evolution event', err);
+            logger.debug('traits refresh failed after evolution event', err);
           }
         });
       } catch (e) {
-        console.debug('persona analytics socket init failed', e);
+        logger.debug('persona analytics socket init failed', e);
       }
     })();
     return () => {

@@ -25,7 +25,8 @@ class AppConfig:
         
         # Database configuration (align default with db/session.py)
         # Note: db/session.py converts postgresql:// to postgresql+asyncpg:// automatically
-        self.database_url = os.getenv("DATABASE_URL", "postgresql://seloai:password@localhost/seloai")
+        # SECURITY: No default credentials - DATABASE_URL must be explicitly configured
+        self.database_url = os.getenv("DATABASE_URL", "")
         self.database_pool_size = int(os.getenv("DATABASE_POOL_SIZE", "10"))
         self.database_max_overflow = int(os.getenv("DATABASE_MAX_OVERFLOW", "20"))
         self.database_pool_timeout = int(os.getenv("DATABASE_POOL_TIMEOUT", "30"))

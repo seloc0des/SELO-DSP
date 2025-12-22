@@ -123,7 +123,11 @@ TRAIT_COUNT_MIN = _read_int_env("PERSONA_TRAITS_MIN_COUNT", 5)
 TRAIT_COUNT_MAX = _read_int_env("PERSONA_TRAITS_MAX_COUNT", 7)
 TRAIT_DESCRIPTION_WORD_LIMIT = _read_int_env("PERSONA_TRAIT_DESC_WORD_LIMIT", 18)
 TRAIT_NAME_PATTERN = re.compile(r"^[a-z]{3,16}$")  # Aligned with IdentityConstraints standard
-ALLOWED_TRAIT_CATEGORIES = {"cognition", "affect", "social", "ethical"}
+# Standardized trait categories matching PersonaEngine.VALID_TRAIT_CATEGORIES
+ALLOWED_TRAIT_CATEGORIES = {
+    "cognitive", "emotional", "social", "learning",
+    "personality", "communication", "general"
+}
 
 if TRAIT_COUNT_MAX < TRAIT_COUNT_MIN:
     TRAIT_COUNT_MAX = TRAIT_COUNT_MIN

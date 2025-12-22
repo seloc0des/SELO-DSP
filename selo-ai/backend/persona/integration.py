@@ -36,12 +36,14 @@ class PersonaIntegration:
         event_system: Optional[EventTriggerSystem] = None,
         persona_engine: Optional[PersonaEngine] = None,
         conversation_repo: Optional[Any] = None,
+        use_saga: bool = False,
     ):
         """Initialize persona integration."""
         self.llm_router = llm_router
         self.vector_store = vector_store
         self.event_system = event_system or EventTriggerSystem()
         self.conversation_repo = conversation_repo
+        self.use_saga = use_saga
 
         # Initialize repositories
         self.persona_repo = PersonaRepository()
@@ -55,11 +57,20 @@ class PersonaIntegration:
             persona_repo=self.persona_repo,
             learning_repo=self.learning_repo
         )
+        
+        # Initialize saga integration if enabled
+        self.saga_integration = None
+        if use_saga:
+            from ..saga.integration import SagaIntegration
+            self.saga_integration = SagaIntegration(
+                persona_repo=self.persona_repo,
+                learning_repo=self.learning_repo
+            )
 
         # Track initialization status
         self.initialized = False
 
-        logger.info("Persona Integration initialized with LLMRouter for all LLM tasks")
+        logger.info(f"Persona Integration initialized with LLMRouter (saga_enabled={use_saga})")
     
     async def initialize(self):
         """Initialize the integration and register event handlers."""
@@ -317,13 +328,45 @@ class PersonaIntegration:
                     )
                     return
 
-                result = await self.persona_engine.evolve_persona_from_reflection(
-                    persona_id=persona_id,
-                    reflection_id=trigger_id,
-                    trait_changes=trait_changes,
-                    reflection_content=reflection_content,
-                    reflection_themes=reflection_themes
-                )
+                # Use saga orchestration if enabled, otherwise direct method call
+                if self.use_saga and self.saga_integration:
+                    logger.info(f"Using saga orchestration for reflection-driven evolution (reflection={trigger_id})")
+                    saga_result = await self.saga_integration.execute_persona_evolution_saga(
+                        user_id=user_id,
+                        persona_id=persona_id,
+                        reflection_id=trigger_id,
+                        trait_changes=trait_changes,
+                        reasoning=f"Reflection-driven evolution from {trigger_id}",
+                        confidence=0.8,
+                        correlation_id=f"reflection_{trigger_id}"
+                    )
+                    
+                    # Convert saga result to standard result format
+                    if saga_result.get('status') == 'completed':
+                        result = {
+                            'success': True,
+                            'changed': True,
+                            'persona_id': persona_id,
+                            'reflection_id': trigger_id,
+                            'saga_id': saga_result.get('id'),
+                            'changes': saga_result.get('output_data', {})
+                        }
+                    else:
+                        result = {
+                            'success': False,
+                            'error': saga_result.get('error_data', 'Saga failed'),
+                            'saga_id': saga_result.get('id')
+                        }
+                        logger.error(f"Saga evolution failed for reflection {trigger_id}: {result.get('error')}")
+                else:
+                    # Direct method call (legacy path)
+                    result = await self.persona_engine.evolve_persona_from_reflection(
+                        persona_id=persona_id,
+                        reflection_id=trigger_id,
+                        trait_changes=trait_changes,
+                        reflection_content=reflection_content,
+                        reflection_themes=reflection_themes
+                    )
             else:
                 # Scheduled: run template-driven reassessment first, then refine via learnings
                 reassess_changed = False

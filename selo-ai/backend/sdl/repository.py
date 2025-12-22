@@ -111,6 +111,32 @@ class LearningRepository:
             
             return learnings
     
+    async def get_learnings_by_source(
+        self,
+        source_type: str,
+        source_id: str,
+        limit: int = 100
+    ) -> List[Learning]:
+        """Get learnings by source type and source ID for idempotency checking."""
+        async with get_session(self.db_session) as session:
+            query = (
+                select(Learning)
+                .where(
+                    and_(
+                        Learning.source_type == source_type,
+                        Learning.source_id == source_id
+                    )
+                )
+                .options(selectinload(Learning.concepts))
+                .order_by(desc(Learning.created_at))
+                .limit(limit)
+            )
+            
+            result = await session.execute(query)
+            learnings = result.scalars().all()
+            
+            return list(learnings)
+    
     async def update_learning(self, learning_id: str, learning_data: Dict[str, Any]) -> Optional[Learning]:
         """Update an existing learning."""
         # Get the learning to update
@@ -161,13 +187,19 @@ class LearningRepository:
     
     async def delete_learning(self, learning_id: str) -> bool:
         """Delete a learning by ID."""
-        # Find the learning
-        learning = await self.get_learning(learning_id)
-        if not learning:
-            return False
-        
         async with get_session(self.db_session) as session:
-            # Remove it
+            # Query and delete in same session to avoid detached instance errors
+            query = (
+                select(Learning)
+                .where(Learning.id == learning_id)
+            )
+            result = await session.execute(query)
+            learning = result.scalar_one_or_none()
+            
+            if not learning:
+                return False
+            
+            # Delete the learning
             await session.delete(learning)
             await session.commit()
         

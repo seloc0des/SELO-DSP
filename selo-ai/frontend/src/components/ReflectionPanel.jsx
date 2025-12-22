@@ -3,6 +3,7 @@ import { reflectionService } from '../services/reflectionService';
 import ErrorBoundary from './ErrorBoundary';
 import ReflectionCard from './Reflection/ReflectionCard';
 import { formatRelativeTime } from '../utils/dateFormatter';
+import { reflectionLogger as logger } from '../utils/logger';
 
 const ReflectionPanel = ({ sessionId, messages }) => {
   // Load reflections from localStorage on mount (if available for this session)
@@ -12,7 +13,7 @@ const ReflectionPanel = ({ sessionId, messages }) => {
       const stored = localStorage.getItem(key);
       return stored ? JSON.parse(stored) : [];
     } catch (e) {
-      console.warn('Failed to load reflections from localStorage:', e);
+      logger.warn('Failed to load reflections from localStorage:', e);
       return [];
     }
   }, [sessionId]);
@@ -58,11 +59,11 @@ const ReflectionPanel = ({ sessionId, messages }) => {
               localStorage.setItem(`${key}_timestamp`, new Date().toISOString());
               return true;
             } catch (retryErr) {
-              console.error('Failed to save reflections even after cleanup:', retryErr);
+              logger.error('Failed to save reflections even after cleanup:', retryErr);
               return false;
             }
           } else {
-            console.warn('Failed to save reflections to localStorage:', e);
+            logger.warn('Failed to save reflections to localStorage:', e);
             return false;
           }
         }
@@ -93,7 +94,7 @@ const ReflectionPanel = ({ sessionId, messages }) => {
             });
           }
         } catch (cleanupErr) {
-          console.warn('Periodic cleanup failed:', cleanupErr);
+          logger.warn('Periodic cleanup failed:', cleanupErr);
         }
       }
     }
@@ -166,7 +167,7 @@ const ReflectionPanel = ({ sessionId, messages }) => {
         try { unsubscribe && unsubscribe(); } catch (e) { /* noop */ }
       };
     } catch (err) {
-      console.error('Failed to initialize reflections:', err);
+      logger.error('Failed to initialize reflections:', err);
       setError(err.message || 'Failed to load reflections');
       setLoading(false);
     }
@@ -227,7 +228,7 @@ const ReflectionPanel = ({ sessionId, messages }) => {
           });
           setReflections(userFacingReflections);
         } catch (err) {
-          console.error('Polling failed:', err);
+          logger.error('Polling failed:', err);
         }
       }, 5000);
     }
@@ -346,11 +347,12 @@ const ReflectionPanel = ({ sessionId, messages }) => {
               const timeAgo = formatRelativeTime(createdAt);
               
               return (
-                <ReflectionCard
-                  key={reflection.id || reflection.reflection_id || index}
-                  reflection={reflection}
-                  timeAgo={timeAgo}
-                />
+                <ErrorBoundary key={reflection.id || reflection.reflection_id || index}>
+                  <ReflectionCard
+                    reflection={reflection}
+                    timeAgo={timeAgo}
+                  />
+                </ErrorBoundary>
               );
             })
           )}

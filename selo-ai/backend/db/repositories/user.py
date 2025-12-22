@@ -11,6 +11,7 @@ Architecture:
 - Session alignment for frontend/backend consistency
 """
 
+import json
 import logging
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
@@ -83,9 +84,7 @@ class UserRepository:
             return user
             
         except Exception as e:
-            
             # Handle race condition: if INSERT failed due to duplicate key, try SELECT again
-            from sqlalchemy.exc import IntegrityError
             if isinstance(e, IntegrityError) and 'users_username_key' in str(e):
                 self.logger.warning(f"User already exists (race condition detected), retrying SELECT...")
                 try:
@@ -162,15 +161,11 @@ class UserRepository:
         Returns:
             bool: True if updated successfully
         """
-        import json
-        
         async with get_session(session) as db:
             return await self._update_preferences_impl(user_id, preferences, db)
     
     async def _update_preferences_impl(self, user_id: str, preferences: Dict[str, Any], session: AsyncSession) -> bool:
         """Implementation of update_preferences."""
-        import json
-        
         try:
             preferences_json = json.dumps(preferences)
             await session.execute(
@@ -199,8 +194,6 @@ class UserRepository:
     
     async def _get_user_preferences_impl(self, user_id: str, session: AsyncSession) -> Dict[str, Any]:
         """Implementation of get_user_preferences."""
-        import json
-        
         try:
             user = await self._get_user_by_id_impl(user_id, session)
             if user and user.preferences:

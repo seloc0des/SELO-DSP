@@ -864,14 +864,17 @@ async def initialize_services():
     if sio is None:
         sio = socketio.AsyncServer(
             async_mode="asgi",
-            # Allow all origins for Engine.IO/Socket.IO (list with "*" may be rejected by some versions)
+            # SECURITY WARNING: Wildcard CORS allows requests from any origin.
+            # For production, restrict to specific origins via CORS_ORIGINS env var.
+            # Socket.IO CORS is separate from FastAPI CORS middleware.
             cors_allowed_origins="*",
             engineio_logger=True,
             async_handlers=True,
             # Keep connections alive much longer when browser tabs are backgrounded
             # (avoid false disconnects due to throttled timers)
-            ping_timeout=86400,   # 24 hours
-            ping_interval=25,   # seconds
+            # Configuration now loaded from environment variables via AppConfig
+            ping_timeout=config.socketio_ping_timeout,
+            ping_interval=config.socketio_ping_interval,
             allow_upgrades=True,  # allow upgrade from polling to WebSocket when possible
             max_http_buffer_size=1_000_000,
         )
@@ -2664,8 +2667,13 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                     # Handle different timestamp formats
                     try:
                         last_time = datetime.fromisoformat(last_timestamp.replace('Z', '+00:00'))
-                    except:
-                        last_time = datetime.fromisoformat(last_timestamp)
+                    except (ValueError, AttributeError) as e:
+                        logger.debug(f"Failed to parse timestamp with timezone replacement: {e}")
+                        try:
+                            last_time = datetime.fromisoformat(last_timestamp)
+                        except (ValueError, AttributeError) as e2:
+                            logger.warning(f"Failed to parse timestamp, using current time: {e2}")
+                            last_time = datetime.now(timezone.utc)
                 else:
                     last_time = last_timestamp
                 

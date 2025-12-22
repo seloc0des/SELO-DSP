@@ -9,11 +9,22 @@ import logging
 from typing import Dict, Any, Optional
 
 from .orchestrator import SagaOrchestrator
-from .handlers import PersonaEvolutionHandlers, GoalManagementHandlers
+from .handlers import (
+    PersonaEvolutionHandlers,
+    GoalManagementHandlers,
+    ConversationProcessingHandlers,
+    EpisodeGenerationHandlers
+)
 from ..db.repositories.saga import SagaRepository
 from ..db.repositories.persona import PersonaRepository
-from ..db.repositories.agent_state import AgentGoalRepository, PlanStepRepository
+from ..db.repositories.agent_state import (
+    AgentGoalRepository,
+    PlanStepRepository,
+    AutobiographicalEpisodeRepository
+)
 from ..sdl.repository import LearningRepository
+from ..db.repositories.conversation import ConversationRepository
+from ..db.repositories.reflection import ReflectionRepository
 
 logger = logging.getLogger("selo.saga.integration")
 
@@ -32,13 +43,19 @@ class SagaIntegration:
         learning_repo: Optional[LearningRepository] = None,
         goal_repo: Optional[AgentGoalRepository] = None,
         plan_repo: Optional[PlanStepRepository] = None,
-        saga_repo: Optional[SagaRepository] = None
+        saga_repo: Optional[SagaRepository] = None,
+        conversation_repo: Optional[ConversationRepository] = None,
+        episode_repo: Optional[AutobiographicalEpisodeRepository] = None,
+        reflection_repo: Optional[ReflectionRepository] = None
     ):
         self.persona_repo = persona_repo or PersonaRepository()
         self.learning_repo = learning_repo or LearningRepository()
         self.goal_repo = goal_repo or AgentGoalRepository()
         self.plan_repo = plan_repo or PlanStepRepository()
         self.saga_repo = saga_repo or SagaRepository()
+        self.conversation_repo = conversation_repo or ConversationRepository()
+        self.episode_repo = episode_repo or AutobiographicalEpisodeRepository()
+        self.reflection_repo = reflection_repo or ReflectionRepository()
         
         # Initialize orchestrator
         self.orchestrator = SagaOrchestrator(self.saga_repo)
@@ -52,11 +69,22 @@ class SagaIntegration:
             self.goal_repo,
             self.plan_repo
         )
+        self.conversation_handlers = ConversationProcessingHandlers(
+            self.conversation_repo,
+            self.learning_repo,
+            self.persona_repo
+        )
+        self.episode_handlers = EpisodeGenerationHandlers(
+            self.episode_repo,
+            self.persona_repo,
+            self.reflection_repo,
+            self.conversation_repo
+        )
         
         # Register all handlers
         self._register_handlers()
         
-        logger.info("Saga integration initialized")
+        logger.info("Saga integration initialized with all handlers")
     
     def _register_handlers(self):
         """Register all step and compensation handlers."""
@@ -107,7 +135,63 @@ class SagaIntegration:
             self.goal_handlers.compensate_create_plan_steps
         )
         
-        logger.debug("Registered all saga handlers")
+        # Conversation processing handlers
+        self.orchestrator.register_step_handler(
+            "store_conversation",
+            self.conversation_handlers.store_conversation_step
+        )
+        self.orchestrator.register_compensation_handler(
+            "compensate_store_conversation",
+            self.conversation_handlers.compensate_store_conversation
+        )
+        
+        self.orchestrator.register_step_handler(
+            "extract_conversation_learnings",
+            self.conversation_handlers.extract_conversation_learnings_step
+        )
+        self.orchestrator.register_compensation_handler(
+            "compensate_extract_conversation_learnings",
+            self.conversation_handlers.compensate_extract_conversation_learnings
+        )
+        
+        self.orchestrator.register_step_handler(
+            "update_conversation_summary",
+            self.conversation_handlers.update_conversation_summary_step
+        )
+        self.orchestrator.register_compensation_handler(
+            "compensate_update_conversation_summary",
+            self.conversation_handlers.compensate_update_conversation_summary
+        )
+        
+        # Episode generation handlers
+        self.orchestrator.register_step_handler(
+            "gather_episode_context",
+            self.episode_handlers.gather_episode_context_step
+        )
+        self.orchestrator.register_compensation_handler(
+            "compensate_gather_episode_context",
+            self.episode_handlers.compensate_gather_episode_context
+        )
+        
+        self.orchestrator.register_step_handler(
+            "generate_episode_narrative",
+            self.episode_handlers.generate_episode_narrative_step
+        )
+        self.orchestrator.register_compensation_handler(
+            "compensate_generate_episode_narrative",
+            self.episode_handlers.compensate_generate_episode_narrative
+        )
+        
+        self.orchestrator.register_step_handler(
+            "persist_episode",
+            self.episode_handlers.persist_episode_step
+        )
+        self.orchestrator.register_compensation_handler(
+            "compensate_persist_episode",
+            self.episode_handlers.compensate_persist_episode
+        )
+        
+        logger.debug("Registered all saga handlers (persona, goal, conversation, episode)")
     
     async def execute_persona_evolution_saga(
         self,
@@ -278,6 +362,179 @@ class SagaIntegration:
         
         logger.info(
             f"Goal creation saga {saga_id} completed with status: {result['status']}"
+        )
+        
+        return result
+    
+    async def execute_conversation_processing_saga(
+        self,
+        user_id: str,
+        session_id: str,
+        messages: List[Dict[str, Any]],
+        correlation_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Execute conversation processing as a saga with automatic compensation.
+        
+        This orchestrates:
+        1. Store conversation messages
+        2. Extract learnings from conversation
+        3. Update conversation summary
+        
+        If any step fails, all completed steps are automatically compensated.
+        
+        Args:
+            user_id: User ID
+            session_id: Session identifier
+            messages: List of message objects
+            correlation_id: Optional correlation ID
+            
+        Returns:
+            Saga execution result with final state
+        """
+        logger.info(
+            f"Starting conversation processing saga for session {session_id}"
+        )
+        
+        # Define saga steps
+        steps = [
+            {
+                "step_name": "store_conversation",
+                "step_type": "store_conversation",
+                "input_data": {
+                    "session_id": session_id,
+                    "user_id": user_id,
+                    "messages": messages
+                },
+                "compensation_handler": "compensate_store_conversation",
+                "max_retries": 2
+            },
+            {
+                "step_name": "extract_conversation_learnings",
+                "step_type": "extract_conversation_learnings",
+                "input_data": {
+                    "messages": messages
+                    # conversation_id will be added by orchestrator from previous step
+                },
+                "compensation_handler": "compensate_extract_conversation_learnings",
+                "max_retries": 3
+            },
+            {
+                "step_name": "update_conversation_summary",
+                "step_type": "update_conversation_summary",
+                "input_data": {
+                    "summary": "Conversation processed",
+                    "topics": [],
+                    "sentiment": None
+                    # conversation_id will be added by orchestrator
+                },
+                "compensation_handler": "compensate_update_conversation_summary",
+                "max_retries": 2
+            }
+        ]
+        
+        # Create and execute saga
+        saga_id = await self.orchestrator.create_saga(
+            saga_type="conversation_processing",
+            user_id=user_id,
+            input_data={
+                "session_id": session_id,
+                "messages": messages,
+                "message_count": len(messages)
+            },
+            steps=steps,
+            correlation_id=correlation_id
+        )
+        
+        result = await self.orchestrator.execute_saga(saga_id)
+        
+        logger.info(
+            f"Conversation processing saga {saga_id} completed with status: {result['status']}"
+        )
+        
+        return result
+    
+    async def execute_episode_generation_saga(
+        self,
+        user_id: str,
+        persona_id: str,
+        trigger_reason: str = "manual",
+        correlation_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Execute episode generation as a saga with automatic compensation.
+        
+        This orchestrates:
+        1. Gather context (persona, reflections, conversations)
+        2. Generate narrative using LLM
+        3. Persist episode to database
+        
+        If any step fails, all completed steps are automatically compensated.
+        
+        Args:
+            user_id: User ID
+            persona_id: Persona ID
+            trigger_reason: Reason for episode generation
+            correlation_id: Optional correlation ID
+            
+        Returns:
+            Saga execution result with final state
+        """
+        logger.info(
+            f"Starting episode generation saga for persona {persona_id}"
+        )
+        
+        # Define saga steps
+        steps = [
+            {
+                "step_name": "gather_episode_context",
+                "step_type": "gather_episode_context",
+                "input_data": {
+                    "persona_id": persona_id,
+                    "user_id": user_id,
+                    "trigger_reason": trigger_reason
+                },
+                "compensation_handler": "compensate_gather_episode_context",
+                "max_retries": 2
+            },
+            {
+                "step_name": "generate_episode_narrative",
+                "step_type": "generate_episode_narrative",
+                "input_data": {
+                    # context, persona_id, user_id will be added from previous step
+                },
+                "compensation_handler": "compensate_generate_episode_narrative",
+                "max_retries": 3
+            },
+            {
+                "step_name": "persist_episode",
+                "step_type": "persist_episode",
+                "input_data": {
+                    "user_id": user_id
+                    # narrative_data, persona_id will be added from previous step
+                },
+                "compensation_handler": "compensate_persist_episode",
+                "max_retries": 2
+            }
+        ]
+        
+        # Create and execute saga
+        saga_id = await self.orchestrator.create_saga(
+            saga_type="episode_generation",
+            user_id=user_id,
+            input_data={
+                "persona_id": persona_id,
+                "trigger_reason": trigger_reason
+            },
+            steps=steps,
+            persona_id=persona_id,
+            correlation_id=correlation_id
+        )
+        
+        result = await self.orchestrator.execute_saga(saga_id)
+        
+        logger.info(
+            f"Episode generation saga {saga_id} completed with status: {result['status']}"
         )
         
         return result

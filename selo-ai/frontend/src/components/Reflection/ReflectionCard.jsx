@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { formatReflectionTimestamp } from '../../utils/dateFormatter';
+import { reflectionLogger as logger } from '../../utils/logger';
 import personaService from '../../services/personaService';
 
 export const parseJsonFromString = (value) => {
@@ -116,7 +118,7 @@ const ReflectionCard = ({ reflection, timeAgo }) => {
         const key = `reflection_expanded_${reflectionId}`;
         localStorage.setItem(key, expanded.toString());
       } catch (e) {
-        console.warn('Failed to save expanded state:', e);
+        logger.warn('Failed to save expanded state:', e);
       }
     }
   }, [expanded, reflectionId]);

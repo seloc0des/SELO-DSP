@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import personaService from '../../services/personaService';
+import { personaLogger as logger } from '../../utils/logger';
 import { sanitizeContentText, parseJsonFromString, toArray } from '../Reflection/ReflectionCard';
 
 /**
@@ -118,7 +119,7 @@ const PersonaEvolution = ({ persona, evolutionHistory, userId }) => {
           setLoading(false);
         })
         .catch(error => {
-          console.error('Failed to fetch persona presentation:', error);
+          logger.error('Failed to fetch persona presentation:', error);
           setLoading(false);
         });
     } else if (!userId) {

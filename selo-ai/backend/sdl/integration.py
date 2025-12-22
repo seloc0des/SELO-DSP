@@ -30,7 +30,8 @@ class SDLIntegration:
         event_system: Optional[EventTriggerSystem] = None,
         learning_repo: Optional[LearningRepository] = None,
         reflection_repo: Optional[ReflectionRepository] = None,
-        user_repo: Optional[UserRepository] = None
+        user_repo: Optional[UserRepository] = None,
+        use_saga: bool = False
     ):
         """Initialize the SDL Integration with required components."""
         self.llm_router = llm_router
@@ -39,6 +40,7 @@ class SDLIntegration:
         self.learning_repo = learning_repo or LearningRepository()
         self.reflection_repo = reflection_repo or ReflectionRepository()
         self.user_repo = user_repo or UserRepository()
+        self.use_saga = use_saga
         self.concept_mapper = ConceptMapper(self.llm_router, self.learning_repo)
         self.sdl_engine = SDLEngine(
             self.llm_router,
@@ -49,7 +51,18 @@ class SDLIntegration:
         )
         self.processing_reflections = set()
         self.processing_conversations = set()
-        logger.info("SDL Integration initialized")
+        
+        # Initialize saga integration if enabled
+        self.saga_integration = None
+        if use_saga:
+            from ..saga.integration import SagaIntegration
+            from ..db.repositories.persona import PersonaRepository
+            self.saga_integration = SagaIntegration(
+                persona_repo=PersonaRepository(),
+                learning_repo=self.learning_repo
+            )
+        
+        logger.info(f"SDL Integration initialized (saga_enabled={use_saga})")
     
     async def start(self):
         """Start the SDL Integration and register event handlers."""
@@ -438,20 +451,15 @@ class SDLIntegration:
             List of existing learnings if already processed, empty list otherwise
         """
         try:
-            # Query for learnings from this source
-            existing = await self.learning_repo.get_learnings_for_user(
-                user_id="",  # We'll get all users for this source
+            # Query for learnings from this specific source using dedicated method
+            existing = await self.learning_repo.get_learnings_by_source(
                 source_type=source_type,
+                source_id=source_id,
                 limit=100  # Reasonable limit
             )
             
-            # Filter to exact source_id match
-            matching = [
-                learning for learning in existing
-                if getattr(learning, 'source_id', None) == source_id
-            ]
-            
-            return [l.to_dict() if hasattr(l, 'to_dict') else l for l in matching]
+            # Convert to dict format
+            return [l.to_dict() if hasattr(l, 'to_dict') else l for l in existing]
             
         except Exception as e:
             logger.warning(

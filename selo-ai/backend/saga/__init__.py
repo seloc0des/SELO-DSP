@@ -8,7 +8,12 @@ with automatic compensation on failure to maintain consistency.
 from .orchestrator import SagaOrchestrator
 from .integration import SagaIntegration
 from .monitor import SagaMonitor
-from .handlers import PersonaEvolutionHandlers, GoalManagementHandlers
+from .handlers import (
+    PersonaEvolutionHandlers,
+    GoalManagementHandlers,
+    ConversationProcessingHandlers,
+    EpisodeGenerationHandlers
+)
 
 __all__ = [
     'SagaOrchestrator',
@@ -16,4 +21,6 @@ __all__ = [
     'SagaMonitor',
     'PersonaEvolutionHandlers',
     'GoalManagementHandlers',
+    'ConversationProcessingHandlers',
+    'EpisodeGenerationHandlers',
 ]

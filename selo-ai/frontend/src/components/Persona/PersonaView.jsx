@@ -3,6 +3,8 @@ import PersonaCard from './PersonaCard';
 import PersonaEvolution from './PersonaEvolution';
 import PersonaAnalytics from './PersonaAnalytics';
 import personaService from '../../services/personaService';
+import { personaLogger as logger } from '../../utils/logger';
+import ErrorBoundary from '../ErrorBoundary';
 
 /**
  * Main component for displaying persona information
@@ -36,7 +38,7 @@ const PersonaView = ({ userId }) => {
       
       setLoading(false);
     } catch (err) {
-      console.error('Error fetching personas:', err);
+      logger.error('Error fetching personas:', err);
       setError('Failed to load personas');
       setLoading(false);
     }
@@ -48,7 +50,7 @@ const PersonaView = ({ userId }) => {
       const history = res?.history || [];
       setEvolutionHistory(history);
     } catch (err) {
-      console.error('Error fetching evolution history:', err);
+      logger.error('Error fetching evolution history:', err);
       setError('Failed to load evolution history');
       setEvolutionHistory([]);
     }
@@ -68,7 +70,7 @@ const PersonaView = ({ userId }) => {
         // Listen for persona evolution events
         // Use functional updates to avoid stale closure on selectedPersona
         socketRef.on('persona.evolution', (data) => {
-          console.log('Received persona.evolution event:', data);
+          logger.debug('Received persona.evolution event:', data);
           if (data.user_id === userId) {
             // Refresh persona data when evolution occurs
             fetchPersonas();
@@ -84,7 +86,7 @@ const PersonaView = ({ userId }) => {
 
         // Listen for initial bootstrap summary to populate UI immediately after bootstrap
         socketRef.on('persona.bootstrap_summary', (data) => {
-          console.log('Received persona.bootstrap_summary event:', data);
+          logger.debug('Received persona.bootstrap_summary event:', data);
           if (data.user_id === userId) {
             fetchPersonas();
             // Use functional state update to get current selectedPersona
@@ -98,7 +100,7 @@ const PersonaView = ({ userId }) => {
         });
 
       } catch (e) {
-        console.error('Failed to initialize persona socket:', e);
+        logger.error('Failed to initialize persona socket:', e);
       }
     })();
 
@@ -129,7 +131,7 @@ const PersonaView = ({ userId }) => {
           // No need for separate ensureDefaultPersona call (removes duplicate API call)
           await fetchPersonas();
         } catch (err) {
-          console.error('Failed to initialize personas:', err);
+          logger.error('Failed to initialize personas:', err);
           setError('Failed to initialize personas');
           setLoading(false);
         }
@@ -140,86 +142,92 @@ const PersonaView = ({ userId }) => {
   }, [userId, fetchPersonas]);
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-2xl font-semibold text-[var(--color-accent)]">
-          <span className="text-sm font-normal text-gray-400 ml-2">
-            (Autonomous Evolution)
-          </span>
-        </h2>
-        <button
-          onClick={async () => {
-            await fetchPersonas();
-            if (selectedPersona) {
-              await fetchEvolutionHistory(selectedPersona.id);
-            }
-          }}
-          className="text-sm px-3 py-1 rounded-md bg-[var(--color-bg-elev-2)] hover:bg-[var(--color-bg-elev-1)] border border-[var(--color-border)] text-[var(--color-accent)]"
-          title="Refresh persona data"
-        >
-          Refresh
-        </button>
-      </div>
-      
-      {error && (
-        <div className="bg-red-900/30 border border-red-700 p-3 rounded-md mb-4 text-red-200">
-          {error}
+    <ErrorBoundary>
+      <div className="flex flex-col h-full">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-2xl font-semibold text-[var(--color-accent)]">
+            <span className="text-sm font-normal text-gray-400 ml-2">
+              (Autonomous Evolution)
+            </span>
+          </h2>
+          <button
+            onClick={async () => {
+              await fetchPersonas();
+              if (selectedPersona) {
+                await fetchEvolutionHistory(selectedPersona.id);
+              }
+            }}
+            className="text-sm px-3 py-1 rounded-md bg-[var(--color-bg-elev-2)] hover:bg-[var(--color-bg-elev-1)] border border-[var(--color-border)] text-[var(--color-accent)]"
+            title="Refresh persona data"
+          >
+            Refresh
+          </button>
         </div>
-      )}
-      
-      {loading ? (
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-pulse text-[var(--color-accent)]">Loading personas...</div>
-        </div>
-      ) : (
-        <>
-          {personas.length === 0 ? (
-            <div className="bg-gray-800/50 p-6 rounded-md text-center">
-              <p>No personas found. Creating default persona...</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-1">
-                <div className="bg-gray-900/50 rounded-lg p-4 h-full">
-                  <h3 className="text-xl font-medium text-[var(--color-accent)] mb-1">SELO's Current State</h3>
-                  {/* Display the chosen name prominently under the section title */}
-                  <div className="text-2xl font-semibold text-[var(--color-text-primary)] mb-3">
-                    {selectedPersona?.name || selectedPersona?.data?.name || 'SELO'}
-                  </div>
-                  <div className="space-y-4">
-                    {personas.map(persona => (
-                      <PersonaCard 
-                        key={persona.id}
-                        persona={persona}
-                        isSelected={selectedPersona && selectedPersona.id === persona.id}
-                        onClick={() => setSelectedPersona(persona)}
-                      />
-                    ))}
+        
+        {error && (
+          <div className="bg-red-900/30 border border-red-700 p-3 rounded-md mb-4 text-red-200">
+            {error}
+          </div>
+        )}
+        
+        {loading ? (
+          <div className="flex items-center justify-center h-64">
+            <div className="animate-pulse text-[var(--color-accent)]">Loading personas...</div>
+          </div>
+        ) : (
+          <>
+            {personas.length === 0 ? (
+              <div className="bg-gray-800/50 p-6 rounded-md text-center">
+                <p>No personas found. Creating default persona...</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-1">
+                  <div className="bg-gray-900/50 rounded-lg p-4 h-full">
+                    <h3 className="text-xl font-medium text-[var(--color-accent)] mb-1">SELO's Current State</h3>
+                    <div className="text-2xl font-semibold text-[var(--color-text-primary)] mb-3">
+                      {selectedPersona?.name || selectedPersona?.data?.name || 'SELO'}
+                    </div>
+                    <div className="space-y-4">
+                      {personas.map(persona => (
+                        <ErrorBoundary key={persona.id}>
+                          <PersonaCard 
+                            persona={persona}
+                            isSelected={selectedPersona && selectedPersona.id === persona.id}
+                            onClick={() => setSelectedPersona(persona)}
+                          />
+                        </ErrorBoundary>
+                      ))}
+                    </div>
                   </div>
                 </div>
+                
+                <div className="lg:col-span-2 flex flex-col gap-6">
+                  {selectedPersona ? (
+                    <>
+                      <ErrorBoundary>
+                        <PersonaEvolution 
+                          persona={selectedPersona} 
+                          evolutionHistory={evolutionHistory}
+                          userId={userId}
+                        />
+                      </ErrorBoundary>
+                      <ErrorBoundary>
+                        <PersonaAnalytics />
+                      </ErrorBoundary>
+                    </>
+                  ) : (
+                    <div className="bg-gray-800/50 p-6 rounded-md text-center">
+                      <p>Select a persona to view its evolution history</p>
+                    </div>
+                  )}
+                </div>
               </div>
-              
-              <div className="lg:col-span-2 flex flex-col gap-6">
-                {selectedPersona ? (
-                  <>
-                    <PersonaEvolution 
-                      persona={selectedPersona} 
-                      evolutionHistory={evolutionHistory}
-                      userId={userId}
-                    />
-                    <PersonaAnalytics />
-                  </>
-                ) : (
-                  <div className="bg-gray-800/50 p-6 rounded-md text-center">
-                    <p>Select a persona to view its evolution history</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </>
-      )}
-    </div>
+            )}
+          </>
+        )}
+      </div>
+    </ErrorBoundary>
   );
 };
 

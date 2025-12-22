@@ -1305,7 +1305,8 @@ Generate a summary that reflects SELO's current evolved state based on this fact
                 import json
                 data = json.loads(summary)
                 summary = data.get("summary", summary)
-            except:
+            except (json.JSONDecodeError, TypeError, AttributeError) as e:
+                logger.debug(f"Summary is not valid JSON, using as-is: {e}")
                 pass
         
         # Clean up extra whitespace

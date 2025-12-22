@@ -9,6 +9,9 @@
  */
 
 import { getApiBaseUrl } from './config';
+import { createLogger } from '../utils/logger';
+
+const logger = createLogger('AgentState');
 
 /**
  * Get current affective state for a persona
@@ -31,7 +34,7 @@ export const getAffectiveState = async (personaId = null) => {
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error('Error fetching affective state:', error);
+    logger.error('Error fetching affective state:', error);
     throw error;
   }
 };
@@ -57,7 +60,7 @@ export const getGoals = async (personaId = null) => {
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error('Error fetching goals:', error);
+    logger.error('Error fetching goals:', error);
     throw error;
   }
 };
@@ -83,7 +86,7 @@ export const getPlanSteps = async (personaId = null) => {
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error('Error fetching plan steps:', error);
+    logger.error('Error fetching plan steps:', error);
     throw error;
   }
 };
@@ -109,7 +112,7 @@ export const getMetaDirectives = async (personaId = null) => {
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error('Error fetching meta-directives:', error);
+    logger.error('Error fetching meta-directives:', error);
     throw error;
   }
 };
@@ -136,7 +139,7 @@ export const getEpisodes = async (personaId = null, limit = 5) => {
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error('Error fetching episodes:', error);
+    logger.error('Error fetching episodes:', error);
     throw error;
   }
 };
@@ -162,7 +165,7 @@ export const getAllAgentState = async (personaId = null) => {
       episodes
     };
   } catch (error) {
-    console.error('Error fetching all agent state:', error);
+    logger.error('Error fetching all agent state:', error);
     throw error;
   }
 };

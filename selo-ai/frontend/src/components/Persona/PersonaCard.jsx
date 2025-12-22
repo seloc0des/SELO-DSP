@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import personaService from '../../services/personaService';
+import { personaLogger as logger } from '../../utils/logger';
 import PersonaTraitRadar from './PersonaTraitRadar';
 
 /**
@@ -53,7 +54,7 @@ const PersonaCard = ({ persona, isSelected, onClick }) => {
             : '',
         });
       } catch (error) {
-        console.error('Error in PersonaCard data fetch:', error);
+        logger.error('Error in PersonaCard data fetch:', error);
         setTraits([]);
         setPresentation({ first_intro: '', first_thoughts: '', last_session_summary: '' });
       } finally {

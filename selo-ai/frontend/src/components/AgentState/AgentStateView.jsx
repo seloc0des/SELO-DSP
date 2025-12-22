@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { getAllAgentState } from '../../services/agentStateService';
+import { createLogger } from '../../utils/logger';
+
+const logger = createLogger('AgentStateView');
 import AffectiveStateCard from './AffectiveStateCard';
 import GoalsList from './GoalsList';
 import EpisodeTimeline from './EpisodeTimeline';
@@ -19,7 +22,7 @@ const AgentStateView = ({ userId }) => {
       setAgentState(data);
       setLastUpdate(new Date());
     } catch (err) {
-      console.error('Failed to fetch agent state:', err);
+      logger.error('Failed to fetch agent state:', err);
       setError(err.message || 'Failed to load agent state');
     } finally {
       setLoading(false);

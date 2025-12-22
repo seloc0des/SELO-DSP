@@ -232,7 +232,7 @@ def health_basic_fallback(*args, **kwargs) -> Dict[str, Any]:
     }
 
 # Register all fallbacks
-def register_all_fallbacks():
+def register_all_fallbacks() -> None:
     """Register all predefined fallback functions.
 
     Safe to call multiple times; subsequent calls are no-ops to avoid duplicate
@@ -369,10 +369,10 @@ def get_degradation_status() -> Dict[str, Any]:
     """Get current system degradation status."""
     return degradation_manager.get_status()
 
-def set_degradation_level(level: str):
+def set_degradation_level(level: str) -> None:
     """Set system degradation level."""
     degradation_manager.set_degradation_level(level)
 
-def assess_and_adjust_degradation(health_data: Dict[str, Any]):
+def assess_and_adjust_degradation(health_data: Dict[str, Any]) -> None:
     """Assess health data and adjust degradation level automatically."""
     degradation_manager.assess_system_health(health_data)

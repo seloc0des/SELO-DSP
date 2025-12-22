@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { io } from 'socket.io-client';
 import { getApiBaseUrl } from './config';
+import { personaLogger as logger } from '../utils/logger';
 
 // Socket.IO instance and cached base URL
 let socket = null;
@@ -70,7 +71,7 @@ const getPersonas = async (_userId) => {
       data: { personas, count },
     };
   } catch (error) {
-    console.error('Failed to fetch personas:', error);
+    logger.error('Failed to fetch personas:', error);
     return { personas: [] };
   }
 };
@@ -87,7 +88,7 @@ const ensureDefaultPersona = async (_userId) => {
     const response = await axios.get(`${API_URL}/api/persona/default`);
     return response.data;
   } catch (error) {
-    console.error('Failed to ensure default persona:', error);
+    logger.error('Failed to ensure default persona:', error);
     return { success: false, error: error.message };
   }
 };
@@ -107,7 +108,7 @@ const getPersonaEvolutionHistory = async (_userId, personaId) => {
     const data = (response && response.data && response.data.data) ? response.data.data : {};
     return { history: data.evolutions || [] };
   } catch (error) {
-    console.error('Failed to fetch persona evolution history:', error);
+    logger.error('Failed to fetch persona evolution history:', error);
     return { history: [] };
   }
 };
@@ -127,7 +128,7 @@ const getPersonaSystemPrompt = async (_userId, personaId) => {
     const data = (response && response.data && response.data.data) ? response.data.data : {};
     return { prompt: data.system_prompt || '' };
   } catch (error) {
-    console.error('Failed to fetch persona system prompt:', error);
+    logger.error('Failed to fetch persona system prompt:', error);
     return { prompt: '' };
   }
 };
@@ -142,7 +143,7 @@ const getDefaultPersona = async () => {
     const response = await axios.get(`${API_URL}/api/persona/default`);
     return response.data;
   } catch (error) {
-    console.error('Failed to fetch default persona:', error);
+    logger.error('Failed to fetch default persona:', error);
     return { success: false, error: error.message };
   }
 };
@@ -161,7 +162,7 @@ const getPersonaPresentation = async (_userId, personaId) => {
     });
     return response.data;
   } catch (error) {
-    console.error('Failed to fetch persona presentation:', error);
+    logger.error('Failed to fetch persona presentation:', error);
     return { success: false, data: { first_intro: '', last_session_summary: '', first_thoughts: '' } };
   }
 };
@@ -186,10 +187,10 @@ const getPersonaTraits = async (_userId, _personaId) => {
       };
     }
     
-    console.warn('Unexpected response format:', response.data);
+    logger.warn('Unexpected response format:', response.data);
     return { traits: [], count: 0 };
   } catch (error) {
-    console.error('Failed to fetch persona traits:', error);
+    logger.error('Failed to fetch persona traits:', error);
     // Still return empty but include more debugging info
     return { 
       traits: [], 
@@ -213,7 +214,7 @@ const getDefaultPersonaTraits = async (category = null) => {
     const data = (response && response.data && response.data.data) ? response.data.data : {};
     return { traits: data.traits || [], count: data.count || 0, persona: data.persona || null };
   } catch (error) {
-    console.error('Failed to fetch default persona traits:', error);
+    logger.error('Failed to fetch default persona traits:', error);
     return { traits: [] };
   }
 };
@@ -235,7 +236,7 @@ const getTraitHistory = async (personaId, traitName, opts = {}) => {
     });
     return response.data;
   } catch (error) {
-    console.error('Failed to fetch trait history:', error);
+    logger.error('Failed to fetch trait history:', error);
     return { history: [] };
   }
 };

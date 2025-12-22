@@ -148,7 +148,7 @@ def get_gpu_info() -> Dict[str, Any]:
     
     return info
 
-def optimize_gpu_memory():
+def optimize_gpu_memory() -> None:
     """
     Optimize GPU memory usage.
     """
@@ -166,7 +166,7 @@ def optimize_gpu_memory():
         except Exception as e:
             logger.warning(f"Could not optimize GPU memory: {e}")
 
-def setup_cuda_environment():
+def setup_cuda_environment() -> None:
     """
     Setup CUDA environment variables and optimizations.
     """

@@ -7,6 +7,7 @@
 
 import { io } from 'socket.io-client';
 import { getApiBaseUrl } from './config';
+import { reflectionLogger as logger } from '../utils/logger';
 
 // Socket.IO connection and status management
 let socket = null;
@@ -26,7 +27,7 @@ let storedOnConnectionStatus = null;
 const scheduleReinit = (reason = 'unknown') => {
   if (reinitScheduled || isConnecting) return;
   reinitScheduled = true;
-  try { console.warn('[ReflectionSocket] scheduling re-init due to:', reason); } catch (_) {}
+  logger.warn('Scheduling re-init due to:', reason);
   setTimeout(() => {
     try {
       if (socket) {
@@ -78,7 +79,7 @@ const updateConnectionStatus = (status) => {
       try {
         callback(status);
       } catch (error) {
-        console.error('Error in connection status callback:', error);
+        logger.error('Error in connection status callback:', error);
       }
     });
   }
@@ -94,7 +95,7 @@ const updateConnectionStatus = (status) => {
 export const initReflectionSocket = (userId, onReflectionUpdate, onConnectionStatus) => {
   // Do not start a socket connection without a valid user id
   if (!userId) {
-    try { console.warn('[ReflectionSocket] init aborted: missing userId'); } catch (_) {}
+    logger.warn('Init aborted: missing userId');
     return null;
   }
   // Store callbacks for reconnection preservation
@@ -123,7 +124,7 @@ export const initReflectionSocket = (userId, onReflectionUpdate, onConnectionSta
     };
     onReflectionUpdate && onReflectionUpdate(payload);
     reflectionListeners.forEach(cb => {
-      try { cb(payload); } catch (e) { console.error(e); }
+      try { cb(payload); } catch (e) { logger.error('Reflection listener error:', e); }
     });
   }
 
@@ -136,7 +137,7 @@ export const initReflectionSocket = (userId, onReflectionUpdate, onConnectionSta
     };
     onReflectionUpdate && onReflectionUpdate(payload);
     reflectionListeners.forEach(cb => {
-      try { cb(payload); } catch (e) { console.error(e); }
+      try { cb(payload); } catch (e) { logger.error('Reflection listener error:', e); }
     });
   }
 
@@ -167,7 +168,7 @@ export const initReflectionSocket = (userId, onReflectionUpdate, onConnectionSta
         // Debug logging removed for production
         updateConnectionStatus('connected');
         onConnectionStatus && onConnectionStatus('connected'); // Backward compatibility
-        try { console.debug('[ReflectionSocket] connected', { clientInstanceId, sid: socket.id }); } catch (_) {}
+        logger.debug('Connected', { clientInstanceId, sid: socket.id });
         isConnecting = false;
         // Authenticate with the socket
         socket.emit('authenticate', { user_id: userId });
@@ -177,7 +178,7 @@ export const initReflectionSocket = (userId, onReflectionUpdate, onConnectionSta
         // Debug logging removed for production
         updateConnectionStatus('disconnected');
         onConnectionStatus && onConnectionStatus('disconnected'); // Backward compatibility
-        try { console.debug('[ReflectionSocket] disconnected', { clientInstanceId, reason }); } catch (_) {}
+        logger.debug('Disconnected', { clientInstanceId, reason });
         isConnecting = false;
         // If this was an intentional client disconnect (component unmount/navigation), do not re-init
         if (intentionalDisconnect) {
@@ -192,33 +193,33 @@ export const initReflectionSocket = (userId, onReflectionUpdate, onConnectionSta
 
       // Additional diagnostics
       socket.on('connect_error', (err) => {
-        console.error('Reflection WebSocket connect_error:', err?.message || err, err);
+        logger.error('WebSocket connect_error:', err?.message || err);
         updateConnectionStatus('polling');
         isConnecting = false;
         // Common after restart or invalid sid; perform a clean re-init
         scheduleReinit('connect_error');
       });
       socket.io.on('reconnect_attempt', (attempt) => {
-        console.warn('Reflection WebSocket reconnect_attempt', attempt);
+        logger.warn('WebSocket reconnect_attempt', attempt);
         updateConnectionStatus('polling');
       });
       socket.io.on('reconnect_error', (err) => {
-        console.error('Reflection WebSocket reconnect_error', err?.message || err, err);
+        logger.error('WebSocket reconnect_error', err?.message || err);
         updateConnectionStatus('polling');
         isConnecting = false;
         scheduleReinit('reconnect_error');
       });
       socket.io.on('reconnect_failed', () => {
-        console.error('Reflection WebSocket reconnect_failed');
+        logger.error('WebSocket reconnect_failed');
         updateConnectionStatus('offline');
         isConnecting = false;
         scheduleReinit('reconnect_failed');
       });
       socket.on('ping', () => {
-        console.debug('Reflection WebSocket ping');
+        logger.debug('WebSocket ping');
       });
       socket.on('pong', (latency) => {
-        console.debug('Reflection WebSocket pong', latency);
+        logger.debug('WebSocket pong', latency);
       });
       
       socket.on('authenticated', (data) => {
@@ -226,7 +227,7 @@ export const initReflectionSocket = (userId, onReflectionUpdate, onConnectionSta
       });
       
       socket.on('error', (data) => {
-        console.error('Reflection WebSocket error', data);
+        logger.error('WebSocket error', data);
         // Some servers emit generic error on invalid sid; re-init defensively
         scheduleReinit('socket_error');
       });
@@ -235,7 +236,7 @@ export const initReflectionSocket = (userId, onReflectionUpdate, onConnectionSta
       socket.on('reflection_generated', handleGenerated);
     })
     .catch((e) => {
-      console.error('Failed to initialize socket due to config error:', e);
+      logger.error('Failed to initialize socket due to config error:', e);
       updateConnectionStatus('offline');
     });
   
@@ -268,7 +269,7 @@ const ensureSocket = (userId) => {
       socket.emit('authenticate', { user_id: userId });
       currentUserId = userId;
     } catch (e) {
-      console.error('Socket authenticate failed', e);
+      logger.error('Socket authenticate failed', e);
     }
   }
 };
@@ -298,7 +299,7 @@ export const fetchReflections = async (userId, reflectionType = null, limit = 10
     
     return await response.json();
   } catch (error) {
-    console.error('Error fetching reflections:', error);
+    logger.error('Error fetching reflections:', error);
     throw error;
   }
 };
@@ -319,7 +320,7 @@ export const fetchReflection = async (reflectionId) => {
     
     return await response.json();
   } catch (error) {
-    console.error(`Error fetching reflection ${reflectionId}:`, error);
+    logger.error(`Error fetching reflection ${reflectionId}:`, error);
     throw error;
   }
 };
@@ -357,7 +358,7 @@ const _triggerReflection = async (userId, reflectionType, memoryIds = null) => {
     
     return await response.json();
   } catch (error) {
-    console.error('Error triggering reflection:', error);
+    logger.error('Error triggering reflection:', error);
     throw error;
   }
 };
@@ -391,7 +392,7 @@ const _scheduleReflection = async (userId, reflectionType) => {
     
     return await response.json();
   } catch (error) {
-    console.error('Error scheduling reflection:', error);
+    logger.error('Error scheduling reflection:', error);
     throw error;
   }
 };
@@ -418,7 +419,7 @@ const _deleteReflection = async (reflectionId) => {
     
     return await response.json();
   } catch (error) {
-    console.error(`Error deleting reflection ${reflectionId}:`, error);
+    logger.error(`Error deleting reflection ${reflectionId}:`, error);
     throw error;
   }
 };

@@ -1561,6 +1561,10 @@ Your decision:"""
                 memory_ids=memory_ids,
                 max_context_items=max_context_items
             )
+            # Add user_name to context if provided
+            if user_name and isinstance(user_name, str):
+                context["user_name"] = user_name
+            
             # Merge any additional context from caller (e.g., current user message)
             try:
                 if isinstance(additional_context, dict) and additional_context:
@@ -3956,6 +3960,8 @@ Please regenerate your reflection following these identity constraints strictly.
                         "created_at": time.time(),
                         # Canonical installation user ID used for persona integration
                         "user_id": canonical_user_id,
+                        # User's actual name for placeholder replacement
+                        "user_name": context.get("user_name") if isinstance(context, dict) else None,
                     },
                 }
 
@@ -4482,6 +4488,40 @@ Please regenerate your reflection following these identity constraints strictly.
                 
                 # Extract user name from metadata if available
                 user_name = metadata_blob.get('user_name') if metadata_blob else None
+                
+                # Fallback: Try to get user name from memory if not in metadata
+                if not user_name:
+                    try:
+                        user_profile_id = reflection.get('user_profile_id')
+                        if user_profile_id and self.conversation_repo:
+                            # Get high-importance memories that might contain the user's name
+                            memories = await self.conversation_repo.get_memories(
+                                str(user_profile_id), 
+                                importance_threshold=7, 
+                                limit=5
+                            )
+                            # Extract name from memory content
+                            import re
+                            for memory in memories:
+                                content = memory.get('content', '') if isinstance(memory, dict) else ''
+                                if content:
+                                    # Look for "User name: X" or similar patterns
+                                    name_patterns = [
+                                        r'(?i)user name:\s*([A-Z][a-z]+)',
+                                        r'(?i)(?:my name is|i am|i\'m)\s+([A-Z][a-z]+)',
+                                        r'(?i)introduced (?:themselves|himself|herself) as\s+([A-Z][a-z]+)',
+                                    ]
+                                    for pattern in name_patterns:
+                                        match = re.search(pattern, content)
+                                        if match:
+                                            extracted = match.group(1).strip()
+                                            if extracted and len(extracted) > 1:
+                                                user_name = extracted
+                                                break
+                                if user_name:
+                                    break
+                    except Exception as e:
+                        logger.debug(f"Could not extract user name from memory: {e}")
                 
                 # Replace [User] placeholder with actual user name if provided
                 if user_name and isinstance(user_name, str):

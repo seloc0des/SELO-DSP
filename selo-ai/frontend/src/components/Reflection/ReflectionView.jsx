@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import ReflectionCard from './ReflectionCard';
+import { reflectionLogger as logger } from '../../utils/logger';
 import { fetchReflections, initReflectionSocket, disconnectReflectionSocket, subscribeToConnectionStatus } from '../../services/reflectionService';
 import { formatRelativeTime } from '../../utils/dateFormatter';
 
@@ -35,7 +36,7 @@ const ReflectionView = ({ userId }) => {
       });
       setReflections(validReflections);
     } catch (err) {
-      console.error('Failed to load reflections', err);
+      logger.error('Failed to load reflections', err);
       setError('Failed to load reflections. Please try again.');
     } finally {
       setIsLoading(false);
