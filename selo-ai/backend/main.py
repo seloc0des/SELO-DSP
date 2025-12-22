@@ -873,8 +873,8 @@ async def initialize_services():
             # Keep connections alive much longer when browser tabs are backgrounded
             # (avoid false disconnects due to throttled timers)
             # Configuration now loaded from environment variables via AppConfig
-            ping_timeout=config.socketio_ping_timeout,
-            ping_interval=config.socketio_ping_interval,
+            ping_timeout=app_cfg.socketio_ping_timeout,
+            ping_interval=app_cfg.socketio_ping_interval,
             allow_upgrades=True,  # allow upgrade from polling to WebSocket when possible
             max_http_buffer_size=1_000_000,
         )
