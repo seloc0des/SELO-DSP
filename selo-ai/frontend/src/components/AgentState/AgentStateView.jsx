@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { getAllAgentState } from '../../services/agentStateService';
 import { createLogger } from '../../utils/logger';
-
-const logger = createLogger('AgentStateView');
 import AffectiveStateCard from './AffectiveStateCard';
 import GoalsList from './GoalsList';
 import EpisodeTimeline from './EpisodeTimeline';
 import MetaDirectivesList from './MetaDirectivesList';
+
+const logger = createLogger('AgentStateView');
 
 const AgentStateView = ({ userId }) => {
   const [agentState, setAgentState] = useState(null);

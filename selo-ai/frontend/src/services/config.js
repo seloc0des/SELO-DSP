@@ -28,7 +28,7 @@ export async function getConfig() {
       cachedConfig = data;
       return cachedConfig;
     } catch (err) {
-      logger.warn('Runtime config load failed, falling back:', err);
+      console.warn('Runtime config load failed, falling back:', err);
       // 3) Fallback: infer API URL from window location
       try {
         const { protocol, hostname, port } = window.location;
