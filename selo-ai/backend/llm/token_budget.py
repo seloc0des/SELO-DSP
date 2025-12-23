@@ -17,15 +17,35 @@ from typing import Dict, Optional, Tuple, Any
 
 logger = logging.getLogger(__name__)
 
+def _resolve_chat_max_cap() -> int:
+    """
+    Resolve the hard ceiling for chat completions.
+
+    Priority:
+    1) CHAT_RESPONSE_MAX_TOKENS (explicit cap for responses)
+    2) CHAT_MAX_TOKENS legacy env
+    3) Safe fallback of 320 tokens
+    """
+    try:
+        cap = int(os.getenv("CHAT_RESPONSE_MAX_TOKENS", "0"))
+    except Exception:
+        cap = 0
+    if cap <= 0:
+        try:
+            cap = int(os.getenv("CHAT_MAX_TOKENS", "320"))
+        except Exception:
+            cap = 320
+    return max(cap, 1)
+
+
 # Task-specific minimum completion tokens
-# Keep chat reasonably expressive but avoid very long default generations
+# Keep chat expressive but prevent rambling
 CHAT_MIN_COMPLETION_TOKENS = 128
 
-# Reflection defaults: tuned for lower latency while preserving narrative richness.
+# Reflection defaults: tuned for concise yet creative inner monologues.
 # Env vars (REFLECTION_NUM_PREDICT, REFLECTION_MAX_TOKENS) can still raise/lower caps.
-# Increased to support higher word counts for high-tier systems
-REFLECTION_MIN_COMPLETION_TOKENS = 384
-MAX_REFLECTION_COMPLETION_TOKENS = 1024  # Increased from 480 to support 250-word reflections
+REFLECTION_MIN_COMPLETION_TOKENS = 220
+MAX_REFLECTION_COMPLETION_TOKENS = 480
 
 ANALYTICAL_MIN_COMPLETION_TOKENS = 1024
 
@@ -169,12 +189,11 @@ class TokenBudgetManager:
             dict with base_max_tokens, min_tokens, temperature, env_prefix
         """
         if task_type in ("chat", "persona_prompt"):
+            chat_cap = _resolve_chat_max_cap()
+            predict_env = cls._env_int("CHAT_NUM_PREDICT", chat_cap)
+            base_chat_cap = min(max(predict_env, CHAT_MIN_COMPLETION_TOKENS), chat_cap)
             return {
-                "base_max_tokens": max(
-                    # Slightly lower default to reduce latency; caller can override via CHAT_NUM_PREDICT
-                    cls._env_int("CHAT_NUM_PREDICT", 768),
-                    CHAT_MIN_COMPLETION_TOKENS
-                ),
+                "base_max_tokens": base_chat_cap,
                 "min_tokens": CHAT_MIN_COMPLETION_TOKENS,
                 "temperature": cls._env_float("CHAT_TEMPERATURE", 0.6),
                 "env_prefix": "CHAT"

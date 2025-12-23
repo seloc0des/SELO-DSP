@@ -98,14 +98,15 @@ def detect_system_profile() -> Dict[str, Any]:
     budgets_by_tier = {
         "high": {
             "chat_max_tokens": 2048,
-            "reflection_max_tokens": 650,
+            "reflection_max_tokens": 480,
+            "reflection_word_cap": 180,
             "analytical_max_tokens": 1536,  # Increased to prevent traits JSON truncation
             "allow_warmup": True,
         },
         "standard": {
             "chat_max_tokens": 1024,
-            # qwen2.5:3b supports 8192 token context natively - use full capacity
-            "reflection_max_tokens": 640,
+            "reflection_max_tokens": 480,
+            "reflection_word_cap": 180,
             "analytical_max_tokens": 1024,  # Increased from 640 to support bootstrap persona generation
             "allow_warmup": False,
         },
@@ -121,6 +122,7 @@ def detect_system_profile() -> Dict[str, Any]:
         "budgets": {
             "chat_max_tokens": budgets["chat_max_tokens"],
             "reflection_max_tokens": budgets["reflection_max_tokens"],
+            "reflection_word_cap": budgets.get("reflection_word_cap", 180),
             "analytical_max_tokens": budgets["analytical_max_tokens"],
         },
         "features": {

@@ -51,10 +51,10 @@ if [ -z "${PERFORMANCE_TIER:-}" ]; then
     # Fallback if centralized script not found
     >&2 echo "Warning: detect-tier.sh not found, using defaults"
     export PERFORMANCE_TIER="standard"
-    export TIER_REFLECTION_NUM_PREDICT=640
-    export TIER_REFLECTION_MAX_TOKENS=640
-    export TIER_REFLECTION_WORD_MAX=250
-    export TIER_REFLECTION_WORD_MIN=80
+    export TIER_REFLECTION_NUM_PREDICT=480
+    export TIER_REFLECTION_MAX_TOKENS=480
+    export TIER_REFLECTION_WORD_MAX=180
+    export TIER_REFLECTION_WORD_MIN=90
     export TIER_ANALYTICAL_NUM_PREDICT=640
     export TIER_CHAT_NUM_PREDICT=1024
     export TIER_CHAT_NUM_CTX=8192
@@ -191,6 +191,7 @@ fi
   echo "REFLECTION_SYNC_TIMEOUT_S=0"
   echo "REFLECTION_LLM_TIMEOUT_S=0"
   echo "REFLECTION_REQUIRED=true"
+  echo "CHAT_RESPONSE_MAX_TOKENS=320"
   echo "CHAT_NUM_PREDICT=1024"
   echo "CHAT_TEMPERATURE=0.6"
   echo "CHAT_TOP_K=40"
@@ -201,8 +202,8 @@ fi
   # Reflection caps (hardware-adaptive based on GPU tier)
   echo "REFLECTION_NUM_PREDICT=$TIER_REFLECTION_NUM_PREDICT"
   echo "REFLECTION_MAX_TOKENS=$TIER_REFLECTION_MAX_TOKENS"
-  echo "REFLECTION_WORD_MIN=$TIER_REFLECTION_WORD_MIN"  # Adjusted to 100 based on LLM testing (Dec 2025)
-  echo "REFLECTION_WORD_MAX=$TIER_REFLECTION_WORD_MAX"  # Adjusted to 150 based on LLM testing (Dec 2025)
+  echo "REFLECTION_WORD_MIN=$TIER_REFLECTION_WORD_MIN"  # Concise inner voice (90 words)
+  echo "REFLECTION_WORD_MAX=$TIER_REFLECTION_WORD_MAX"  # Concise inner voice (180 words)
   # Reflection identity validation retries (higher by default for fast 1.5b model)
   echo "REFLECTION_IDENTITY_MAX_RETRIES=4"
   # Analytical token budget for structured outputs (hardware-adaptive)

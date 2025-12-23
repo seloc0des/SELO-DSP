@@ -222,10 +222,10 @@ else
   # Fallback if centralized script not found
   echo "Warning: detect-tier.sh not found, using defaults"
   export PERFORMANCE_TIER="standard"
-  export TIER_REFLECTION_NUM_PREDICT=640
-  export TIER_REFLECTION_MAX_TOKENS=640
-  export TIER_REFLECTION_WORD_MAX=250
-  export TIER_REFLECTION_WORD_MIN=80
+  export TIER_REFLECTION_NUM_PREDICT=480
+  export TIER_REFLECTION_MAX_TOKENS=480
+  export TIER_REFLECTION_WORD_MAX=180
+  export TIER_REFLECTION_WORD_MIN=90
   export TIER_ANALYTICAL_NUM_PREDICT=640
   export TIER_CHAT_NUM_PREDICT=1024
   export TIER_CHAT_NUM_CTX=8192
@@ -234,7 +234,7 @@ fi
 # Display tier information
 if [ "$PERFORMANCE_TIER" = "high" ]; then
   echo "✨ High-Performance Tier Confirmed"
-  echo "   - Reflection capacity: 650 tokens (~650 words max)"
+  echo "   - Reflection capacity: 480 tokens (~180 words max plus JSON metadata)"
   echo "   - Enhanced philosophical depth during persona bootstrap"
   echo "   - Extended chat context: 8192 tokens"
   echo "   - Multiple models loaded in VRAM simultaneously"

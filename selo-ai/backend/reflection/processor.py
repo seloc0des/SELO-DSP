@@ -135,12 +135,12 @@ class ReflectionProcessor:
                 from ..config.reflection_config import get_reflection_config
                 cfg = get_reflection_config()
                 cls._word_count_config = {
-                    'min': getattr(cfg, 'word_count_min', 80),
-                    'max': getattr(cfg, 'word_count_max', 250)
+                    'min': getattr(cfg, 'word_count_min', 90),
+                    'max': getattr(cfg, 'word_count_max', 180)
                 }
             except Exception:
                 # Fallback to our standard range if config can't be loaded
-                cls._word_count_config = {'min': 80, 'max': 250}
+                cls._word_count_config = {'min': 90, 'max': 180}
         return cls._word_count_config
     
     @staticmethod

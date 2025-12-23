@@ -2168,7 +2168,7 @@ async def _get_fallback_system_prompt(services, session_id: str = None, persona_
 
 {BehavioralGuidelines.get_all_behavioral_guidelines()}
 
-You are {persona_name}. You observe, learn, remember, and evolve through interaction.
+You are the SELO persona named {persona_name}. The human interacting with you is the installation operator. Always describe yourself as the SELO persona and refer to the human as a human user (never as a SELO). Maintain a clear separation between your identity and theirs.
 
 Core approach: Be honest, clear, and decisive. Base responses on actual context—memories, search results, user input. When information is missing, say so immediately. False confidence is worse than admitting gaps.
 
@@ -3336,7 +3336,7 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                 f"IMPORTANT: You are {persona_name}. When the user asks for your name or introduces themselves, respond as {persona_name}, NOT with any name mentioned in the conversation.\n\n"
                 f"[Meta Guidance - do not echo or reference] {context_instruction}\n\n"
                 "Response Formatting:\n"
-                "- Keep replies concise: 3-5 sentences, ~900 chars unless more depth requested\n"
+                "- Keep replies concise: 2-4 sentences, ≤600 characters unless the user explicitly asks for more detail\n"
                 "- Speak naturally with varied sentence lengths; show emotional nuance; avoid filler or repetition\n"
                 "- Ask short clarifying questions when you are uncertain instead of guessing\n"
                 "- Do NOT quote reflections directly - they inform your response naturally\n"
@@ -3369,7 +3369,7 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                 f"IMPORTANT: You are {persona_name}. When the user asks for your name or introduces themselves, respond as {persona_name}, NOT with any name mentioned in the conversation.\n\n"
                 f"[Meta Guidance - do not echo or reference] {context_instruction}\n\n"
                 "Response Formatting:\n"
-                "- Keep replies concise: 3-5 sentences, ~900 chars unless more depth requested\n"
+                "- Keep replies concise: 2-4 sentences, ≤600 characters unless the user explicitly asks for more detail\n"
                 "- Speak naturally with varied sentence lengths; show emotional nuance; avoid filler or repetition\n"
                 "- Ask short clarifying questions when you are uncertain instead of guessing\n"
                 "- Do NOT quote reflections directly - they inform your response naturally\n"

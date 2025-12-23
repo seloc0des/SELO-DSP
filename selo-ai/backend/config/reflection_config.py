@@ -77,13 +77,13 @@ class ReflectionConfig:
         self.min_reflection_length = int(os.getenv("REFLECTION_MIN_LENGTH", "100"))
         
         # Word count bounds for reflection narrative (allows full emotional depth)
-        # Updated to 80-250 words to reduce retries while maintaining quality
-        # Lower bound of 80 allows for more concise reflections
-        # Upper bound of 250 provides ample space for detailed thoughts
+        # Updated to 90-180 words to keep reflections concise but expressive
+        # Lower bound of 90 preserves full narrative arcs without rambling
+        # Upper bound of 180 keeps content tight for scheduling/latency
         try:
-            self.word_count_min = int(os.getenv("REFLECTION_WORD_MIN", "80"))
+            self.word_count_min = int(os.getenv("REFLECTION_WORD_MIN", "90"))
         except Exception:
-            self.word_count_min = 80
+            self.word_count_min = 90
         
         # Use tier-aware fallback for word count max
         try:
@@ -94,15 +94,15 @@ class ReflectionConfig:
                 try:
                     from ..utils.system_profile import detect_system_profile
                     profile = detect_system_profile()
-                    # High-tier: 250 words, Standard-tier: 250 words (unified for simplicity)
-                    self.word_count_max = 250
+                    # High-tier and standard tier share the same concise cap
+                    self.word_count_max = 180
                     logger.debug(f"Using tier-aware word count max: {self.word_count_max} (tier={profile.get('tier', 'unknown')})")
                 except Exception as e:
-                    # Final fallback to 250 words
-                    self.word_count_max = 250
+                    # Final fallback to 180 words
+                    self.word_count_max = 180
                     logger.warning(f"Failed to detect system tier for word count, using fallback: {e}")
         except Exception:
-            self.word_count_max = 250
+            self.word_count_max = 180
 
         # Coherence and quality checks
         self.coherence_check_enabled = os.getenv("REFLECTION_COHERENCE_CHECK", "true").lower() == "true"

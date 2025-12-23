@@ -29,9 +29,9 @@ def _resolve_reflection_cap() -> int:
             env_cap = profile["budgets"]["reflection_max_tokens"]
             logger.debug(f"Using tier-aware reflection cap: {env_cap} (tier={profile['tier']})")
         except Exception as e:
-            # Final fallback to standard tier value
-            env_cap = 640
-            logger.warning(f"Failed to detect system tier, using standard fallback: {e}")
+            # Final fallback to concise standard value
+            env_cap = 480
+            logger.warning(f"Failed to detect system tier, using concise fallback: {e}")
     
     return env_cap
 
@@ -49,17 +49,18 @@ def _resolve_reflection_min_completion() -> int:
         try:
             from ..utils.system_profile import detect_system_profile
             profile = detect_system_profile()
-            # High tier: 650 words, Standard tier: 500 words
-            word_max = 650 if profile["tier"] == "high" else 500
+            # Concise reflections share the same cap across tiers
+            word_max = profile["budgets"].get("reflection_word_cap", 180)
             logger.debug(f"Using tier-aware word max: {word_max} (tier={profile['tier']})")
         except Exception as e:
-            # Final fallback to standard tier value
-            word_max = 500
-            logger.warning(f"Failed to detect system tier for word max, using standard fallback: {e}")
+            # Final fallback to concise value
+            word_max = 180
+            logger.warning(f"Failed to detect system tier for word max, using concise fallback: {e}")
     
     # Buffer for JSON scaffolding and metadata around the narrative content
-    buffer_tokens = int(os.getenv("REFLECTION_COMPLETION_BUFFER", "90"))
-    return max(540, word_max + buffer_tokens)
+    buffer_tokens = int(os.getenv("REFLECTION_COMPLETION_BUFFER", "60"))
+    min_tokens = int(os.getenv("REFLECTION_MIN_COMPLETION_TOKENS", "260"))
+    return max(min_tokens, word_max + buffer_tokens)
 
 
 def _resolve_chat_min_completion() -> int:
@@ -152,28 +153,6 @@ class LLMRouter:
         if task_type in ("chat", "persona_prompt"):
             llm = self.conversational_llm
             llm_role = "conversational"
-            
-            # Fix 2: Router-level constraint injection for defense-in-depth
-            # Inject MINIMAL identity constraints only - NO_FABRICATION is already in persona prompt
-            # This targets identity leaks in paths that bypass persona prompt (e.g., openings.py)
-            # Token cost: ~120 tokens (vs ~750 if we included NO_FABRICATION redundantly)
-            try:
-                from backend.constraints import IdentityConstraints
-                
-                # Use lightweight identity-only injection to minimize token overhead
-                constraint_prefix = f"""[IDENTITY CONSTRAINTS]
-{IdentityConstraints.SPECIES_CONSTRAINT}
-[END CONSTRAINTS]
-
-"""
-                # Prepend constraints to the prompt
-                original_prompt = kwargs.get("prompt", "")
-                kwargs["prompt"] = constraint_prefix + original_prompt
-                logger.debug("Injected identity constraints into %s prompt (~120 tokens)", task_type)
-            except ImportError as e:
-                logger.warning(f"Could not inject constraints (import failed): {e}")
-            except Exception as e:
-                logger.warning(f"Constraint injection failed (non-fatal): {e}")
                     
         elif task_type == "reflection":
             # Require an explicit reflection LLM; do not silently fall back
