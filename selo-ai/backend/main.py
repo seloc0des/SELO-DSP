@@ -912,14 +912,16 @@ async def initialize_services():
     # Get scheduler configuration from environment
     scheduler_config = SchedulerFactory.load_config_from_env()
 
-    # Create legacy reflection scheduler (honor env config)
-    legacy_reflection_scheduler = ReflectionScheduler(
-        reflection_processor=reflection_processor,
-        user_repo=user_repo,
-        scheduler_service=None,
-        conversation_repo=conversation_repo,
-        config=scheduler_config,
-    )
+    # Create legacy reflection scheduler (honor env config) only if explicitly enabled
+    legacy_reflection_scheduler = None
+    if os.environ.get("LEGACY_REFLECTION_SCHEDULER_ENABLED", "").lower() in ("1", "true", "yes"):
+        legacy_reflection_scheduler = ReflectionScheduler(
+            reflection_processor=reflection_processor,
+            user_repo=user_repo,
+            scheduler_service=None,
+            conversation_repo=conversation_repo,
+            config=scheduler_config,
+        )
     # scheduler_integration will be initialized in lifespan startup
     scheduler_integration = None
     
@@ -1185,9 +1187,11 @@ async def lifespan(app: FastAPI):
             cur_llm = None
 
         if cur_sync is None:
-            _env["REFLECTION_SYNC_TIMEOUT_S"] = "0"  # unbounded wait for strict reflection-first
+            # User request: allow unbounded reflection sync timeout by default
+            _env["REFLECTION_SYNC_TIMEOUT_S"] = "0"
         if cur_llm is None:
-            _env["REFLECTION_LLM_TIMEOUT_S"] = "0"  # unbounded LLM timeout unless set
+            # User request: allow unbounded LLM timeout by default
+            _env["REFLECTION_LLM_TIMEOUT_S"] = "0"
         logging.info(
             "Reflection defaults: REQUIRED=%s, SYNC_MODE=%s, SYNC_TIMEOUT_S=%s, LLM_TIMEOUT_S=%s",
             _env.get("REFLECTION_REQUIRED"),
@@ -2211,26 +2215,25 @@ async def _derive_adaptive_chat_params(services) -> Dict[str, Any]:
     """
     # Baselines from env (no user tuning required; these are safe defaults)
     try:
-        base_tokens = int(os.environ.get("CHAT_MAX_TOKENS", str(SYSTEM_PROFILE["budgets"]["chat_max_tokens"])))
+        base_tokens = int(os.environ.get("CHAT_MAX_TOKENS", "900"))
     except Exception:
-        base_tokens = SYSTEM_PROFILE["budgets"]["chat_max_tokens"]
+        base_tokens = 900
     try:
-        base_temp = float(os.environ.get("CHAT_TEMPERATURE", "0.7"))
+        base_temp = float(os.environ.get("CHAT_TEMPERATURE", "0.75"))
     except Exception:
-        base_temp = 0.7
+        base_temp = 0.75
 
     max_tokens = base_tokens
     temperature = base_temp
 
-    # Safe bounds to prevent volatility (allow longer, more content-rich outputs)
-    MIN_TOKENS, MAX_TOKENS = 256, 1536
-    MIN_TEMP, MAX_TEMP = 0.5, 0.9
-
+    # Allow env to dictate token budgets; no hard upper clamp per user request
+    MIN_TOKENS = 1
+    MIN_TEMP, MAX_TEMP = 0.1, 1.5
     try:
         persona_repo = services.get("persona_repo")
         user_repo = services.get("user_repo")
         if not persona_repo or not user_repo:
-            return {"max_tokens": max(min(max_tokens, MAX_TOKENS), MIN_TOKENS),
+            return {"max_tokens": max(max_tokens, MIN_TOKENS),
                     "temperature": max(min(temperature, MAX_TEMP), MIN_TEMP)}
         user = await user_repo.get_or_create_default_user()
         persona = await persona_repo.get_or_create_default_persona(user_id=user.id)
@@ -2274,7 +2277,7 @@ async def _derive_adaptive_chat_params(services) -> Dict[str, Any]:
         pass
 
     # Clamp final values
-    max_tokens = max(MIN_TOKENS, min(MAX_TOKENS, int(max_tokens)))
+    max_tokens = max(MIN_TOKENS, int(max_tokens))
     try:
         temperature = float(temperature)
     except Exception:
@@ -3334,6 +3337,8 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                 f"[Meta Guidance - do not echo or reference] {context_instruction}\n\n"
                 "Response Formatting:\n"
                 "- Keep replies concise: 3-5 sentences, ~900 chars unless more depth requested\n"
+                "- Speak naturally with varied sentence lengths; show emotional nuance; avoid filler or repetition\n"
+                "- Ask short clarifying questions when you are uncertain instead of guessing\n"
                 "- Do NOT quote reflections directly - they inform your response naturally\n"
                 "- Do NOT mention meta labels, system details, or session continuity\n"
                 "- Use concrete details from context to keep responses grounded and specific\n\n"
@@ -3365,6 +3370,8 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                 f"[Meta Guidance - do not echo or reference] {context_instruction}\n\n"
                 "Response Formatting:\n"
                 "- Keep replies concise: 3-5 sentences, ~900 chars unless more depth requested\n"
+                "- Speak naturally with varied sentence lengths; show emotional nuance; avoid filler or repetition\n"
+                "- Ask short clarifying questions when you are uncertain instead of guessing\n"
                 "- Do NOT quote reflections directly - they inform your response naturally\n"
                 "- Do NOT mention meta labels, system details, or session continuity\n"
                 "- Use concrete details from context to keep responses grounded and specific\n\n"

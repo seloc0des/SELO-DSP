@@ -315,9 +315,12 @@ class LLMController:
                     return int(float(val))
                 except Exception:
                     return None
-            # Respect caller-provided max_tokens strictly for num_predict to avoid unintended overrides
-            # Router is responsible for applying task-specific defaults from env.
-            num_predict = max(1, min(int(max_tokens), 4096))
+            # Respect caller-provided max_tokens strictly for num_predict.
+            # If <=0 or None, allow unbounded generation via -1.
+            if max_tokens is None or int(max_tokens) <= 0:
+                num_predict = -1
+            else:
+                num_predict = max(1, int(max_tokens))
             top_k = _env_int("CHAT_TOP_K", 40)
             top_p = _env_float("CHAT_TOP_P", 0.9)
             num_ctx = _env_int("CHAT_NUM_CTX", 8192)  # qwen2.5:3b native capacity

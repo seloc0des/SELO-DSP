@@ -12,6 +12,10 @@ from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger("selo.reflection.scheduler")
 
+# Lightweight in-process execution tracking for health checks / diagnostics
+JOB_EXECUTION_STATE: Dict[str, Dict[str, Any]] = {}
+JOB_EXECUTION_METRICS: Dict[str, Dict[str, Any]] = {}
+
 # -------------------------------------------------------------------------------------
 # Module-level job functions for APScheduler persistence (serializable import paths)
 # -------------------------------------------------------------------------------------
@@ -44,8 +48,18 @@ async def run_reflection_for_all_users_job(reflection_type: str):
     if not reflection_processor or not user_repo:
         logger.error("Missing services for reflection job: reflection_processor or user_repo")
         return
+    job_state: Dict[str, Any] = {
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "succeeded": 0,
+        "skipped": 0,
+        "failed": 0,
+        "total": 0,
+    }
+
+    job_start = time.time()
     try:
         active_users = await user_repo.get_active_users()
+        job_state["total"] = len(active_users)
         logger.info(f"[Job] Running {reflection_type} reflection for {len(active_users)} users")
         for user in active_users:
             try:
@@ -59,21 +73,64 @@ async def run_reflection_for_all_users_job(reflection_type: str):
                         has_interacted = True
 
                 if not has_interacted:
+                    job_state["skipped"] += 1
                     logger.info(f"Skipping {reflection_type} reflection for user {user_id} (no user interaction yet)")
                     continue
 
-                await reflection_processor.generate_reflection(
-                    reflection_type=reflection_type,
-                    user_profile_id=user_id,
-                    trigger_source="scheduler",
-                )
+                max_attempts = 3
+                attempt = 0
+                while attempt < max_attempts:
+                    try:
+                        await reflection_processor.generate_reflection(
+                            reflection_type=reflection_type,
+                            user_profile_id=user_id,
+                            trigger_source="scheduler",
+                        )
+                        job_state["succeeded"] += 1
+                        break
+                    except Exception as attempt_err:
+                        attempt += 1
+                        if attempt >= max_attempts:
+                            job_state["failed"] += 1
+                            logger.error(
+                                f"[Job] Error generating {reflection_type} reflection for user {user_id} after {attempt} attempts: {attempt_err}",
+                                exc_info=True,
+                            )
+                        else:
+                            backoff = min(2 ** attempt, 8)
+                            logger.warning(
+                                f"[Job] Attempt {attempt} failed for {reflection_type} reflection user {user_id}, retrying in {backoff}s: {attempt_err}"
+                            )
+                            await asyncio.sleep(backoff)
+
             except Exception as e:
+                job_state["failed"] += 1
                 logger.error(
                     f"[Job] Error generating {reflection_type} reflection for user {user_id}: {str(e)}",
                     exc_info=True,
                 )
     except Exception as e:
+        job_state["failed"] = job_state.get("failed", 0) + 1
         logger.error(f"[Job] Error running {reflection_type} reflection job: {str(e)}", exc_info=True)
+    finally:
+        job_state["finished_at"] = datetime.now(timezone.utc).isoformat()
+        job_state["duration_s"] = round(time.time() - job_start, 3)
+        JOB_EXECUTION_STATE[f"reflection_{reflection_type}"] = job_state
+        JOB_EXECUTION_METRICS[f"reflection_{reflection_type}"] = {
+            "success": job_state.get("succeeded", 0),
+            "failed": job_state.get("failed", 0),
+            "skipped": job_state.get("skipped", 0),
+            "duration_s": job_state.get("duration_s", 0.0),
+            "total": job_state.get("total", 0),
+        }
+        logger.info(
+            "[Job] %s reflection summary: total=%s, succeeded=%s, skipped=%s, failed=%s",
+            reflection_type,
+            job_state.get("total"),
+            job_state.get("succeeded"),
+            job_state.get("skipped"),
+            job_state.get("failed"),
+        )
 
 
 async def run_daily_reflections():
@@ -144,10 +201,20 @@ async def refresh_nightly_mantras():
         logger.error(f"[Job] Failed to load active users for mantra refresh: {fetch_err}", exc_info=True)
         return
 
+    job_state: Dict[str, Any] = {
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "succeeded": 0,
+        "failed": 0,
+        "total": 0,
+    }
+
     if not active_users:
         logger.info("[Job] No active users found; skipping nightly mantra refresh")
+        job_state["finished_at"] = datetime.now(timezone.utc).isoformat()
+        JOB_EXECUTION_STATE["nightly_mantra_refresh"] = job_state
         return
 
+    job_state["total"] = len(active_users)
     logger.info(f"[Job] Refreshing nightly mantras for {len(active_users)} users")
 
     for user in active_users:
@@ -161,8 +228,19 @@ async def refresh_nightly_mantras():
                 continue
 
             await reflection_processor.refresh_daily_mantra_for_user(str(user_id))
+            job_state["succeeded"] += 1
         except Exception as user_err:
+            job_state["failed"] += 1
             logger.error(f"[Job] Nightly mantra refresh failed for user {user_id}: {user_err}", exc_info=True)
+
+    job_state["finished_at"] = datetime.now(timezone.utc).isoformat()
+    JOB_EXECUTION_STATE["nightly_mantra_refresh"] = job_state
+    logger.info(
+        "[Job] Nightly mantra refresh summary: total=%s, succeeded=%s, failed=%s",
+        job_state.get("total"),
+        job_state.get("succeeded"),
+        job_state.get("failed"),
+    )
 
 
 async def _analyze_relationship_answers_for_user(
@@ -297,6 +375,7 @@ class ReflectionScheduler:
     async def _register_daily_reflection_job(self):
         """Register the daily reflection job."""
         if not self.scheduler_service:
+            logger.warning("Scheduler service unavailable; daily reflection job not registered")
             return
         
         try:
@@ -323,11 +402,15 @@ class ReflectionScheduler:
                 "hour": 0,
                 "minute": 0,
                 "replace_existing": True,
-                "misfire_grace_time": 3600,  # up to 60 minutes late still runs once
+                "misfire_grace_time": 10800,  # allow up to 3 hours catch-up
+                "coalesce": True,
             }
             if tzinfo:
                 add_kwargs["timezone"] = tzinfo
-            await self.scheduler_service.add_job(**add_kwargs)
+            job = await self.scheduler_service.add_job(**add_kwargs)
+            if not job:
+                logger.error("Failed to register daily reflection job")
+                return
             
             self.registered_jobs[job_id] = True
             logger.info(f"Registered daily reflection job with ID {job_id}")
@@ -338,6 +421,7 @@ class ReflectionScheduler:
     async def _register_weekly_reflection_job(self):
         """Register the weekly reflection job."""
         if not self.scheduler_service:
+            logger.warning("Scheduler service unavailable; weekly reflection job not registered")
             return
         
         try:
@@ -365,11 +449,15 @@ class ReflectionScheduler:
                 "hour": 0,
                 "minute": 0,
                 "replace_existing": True,
-                "misfire_grace_time": 3600,  # up to 60 minutes late still runs once
+                "misfire_grace_time": 10800,
+                "coalesce": True,
             }
             if tzinfo:
                 add_kwargs["timezone"] = tzinfo
-            await self.scheduler_service.add_job(**add_kwargs)
+            job = await self.scheduler_service.add_job(**add_kwargs)
+            if not job:
+                logger.error("Failed to register weekly reflection job")
+                return
             
             self.registered_jobs[job_id] = True
             logger.info(f"Registered weekly reflection job with ID {job_id}")
@@ -380,6 +468,7 @@ class ReflectionScheduler:
     async def _register_relationship_questions_job(self):
         """Register nightly relationship-question reflection job."""
         if not self.scheduler_service:
+            logger.warning("Scheduler service unavailable; relationship questions job not registered")
             return
         
         try:
@@ -403,11 +492,15 @@ class ReflectionScheduler:
                 "hour": 1,
                 "minute": 15,
                 "replace_existing": True,
-                "misfire_grace_time": 3600,
+                "misfire_grace_time": 7200,
+                "coalesce": True,
             }
             if tzinfo:
                 add_kwargs["timezone"] = tzinfo
-            await self.scheduler_service.add_job(**add_kwargs)
+            job = await self.scheduler_service.add_job(**add_kwargs)
+            if not job:
+                logger.error("Failed to register relationship questions job")
+                return
 
             self.registered_jobs[job_id] = True
             logger.info(f"Registered nightly relationship-questions reflection job with ID {job_id}")
@@ -418,6 +511,7 @@ class ReflectionScheduler:
     async def _register_relationship_answer_audit_job(self):
         """Register a weekly audit job for relationship-answer memories."""
         if not self.scheduler_service:
+            logger.warning("Scheduler service unavailable; relationship-answer audit job not registered")
             return
         
         try:
@@ -443,10 +537,14 @@ class ReflectionScheduler:
                 "minute": 5,
                 "replace_existing": True,
                 "misfire_grace_time": 7200,
+                "coalesce": True,
             }
             if tzinfo:
                 add_kwargs["timezone"] = tzinfo
-            await self.scheduler_service.add_job(**add_kwargs)
+            job = await self.scheduler_service.add_job(**add_kwargs)
+            if not job:
+                logger.error("Failed to register relationship answer audit job")
+                return
 
             self.registered_jobs[job_id] = True
             logger.info(f"Registered weekly relationship-answer audit job with ID {job_id}")
@@ -457,6 +555,7 @@ class ReflectionScheduler:
     async def _register_nightly_mantra_refresh_job(self):
         """Register nightly mantra refresh job to run after persona evolution."""
         if not self.scheduler_service:
+            logger.warning("Scheduler service unavailable; nightly mantra refresh job not registered")
             return
         
         try:
@@ -480,12 +579,16 @@ class ReflectionScheduler:
                 "hour": 0,
                 "minute": 10,
                 "replace_existing": True,
-                "misfire_grace_time": 1800,
+                "misfire_grace_time": 7200,
+                "coalesce": True,
             }
             if tzinfo:
                 add_kwargs["timezone"] = tzinfo
 
-            await self.scheduler_service.add_job(**add_kwargs)
+            job = await self.scheduler_service.add_job(**add_kwargs)
+            if not job:
+                logger.error("Failed to register nightly mantra refresh job")
+                return
 
             self.registered_jobs[job_id] = True
             logger.info(f"Registered nightly mantra refresh job with ID {job_id}")

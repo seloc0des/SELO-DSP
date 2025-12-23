@@ -78,6 +78,8 @@ class SchedulerIntegration:
         
         # Integration state
         self.initialized = False
+        # Cooldown map for memory-triggered reflections to prevent duplicate storms
+        self._memory_trigger_cooldowns: Dict[str, float] = {}
         
         logger.info("Scheduler integration initialized")
     
@@ -335,6 +337,16 @@ class SchedulerIntegration:
         # Check if this memory should trigger a reflection
         memory_type = event_data.get("memory_type", "")
         importance = event_data.get("importance", 0.0)
+        memory_id = event_data.get("memory_id") or ""
+
+        # Apply per-memory cooldown to avoid duplicate storms while keeping immediacy
+        cooldown_seconds = 120  # 2 minutes
+        now = time.time()
+        cooldown_key = f"{user_id}:{memory_id or memory_type}"
+        next_allowed = self._memory_trigger_cooldowns.get(cooldown_key, 0)
+        if now < next_allowed:
+            logger.debug("Skipping memory-triggered reflection for %s (cooldown active)", cooldown_key)
+            return
         
         # High importance memories might trigger immediate reflections
         if importance >= 0.8:
@@ -342,30 +354,40 @@ class SchedulerIntegration:
             
             # Implement logic to trigger reflection based on important memories
             try:
-                memory_id = event_data.get("memory_id")
-                # Schedule an immediate reflection for high-importance memories
+                self._memory_trigger_cooldowns[cooldown_key] = now + cooldown_seconds
+
+                # First attempt immediate reflection (must-have behavior)
+                if hasattr(self, "reflection_processor") and self.reflection_processor:
+                    try:
+                        await self.reflection_processor.generate_reflection(
+                            reflection_type="memory_triggered",
+                            user_profile_id=user_id,
+                            memory_ids=[memory_id] if memory_id else None,
+                            trigger_source="important_memory_immediate",
+                        )
+                        logger.info("Immediate memory-triggered reflection executed for user %s", user_id)
+                        return
+                    except Exception as immediate_err:
+                        logger.warning(
+                            "Immediate reflection failed for user %s (will schedule fallback): %s",
+                            user_id,
+                            immediate_err,
+                        )
+
+                # Fallback: schedule a reflection if scheduler is available
                 if self.reflection_scheduler:
                     await self.reflection_scheduler.schedule_reflection(
                         user_profile_id=user_id,
                         reflection_type="memory_triggered",
-                        trigger_source="important_memory",
+                        trigger_source="important_memory_fallback",
                         context={
                             "memory_id": memory_id,
                             "importance_score": importance,
-                            "trigger_reason": "High importance memory detected"
+                            "trigger_reason": "High importance memory detected (fallback)"
                         },
                         delay_seconds=5  # Small delay to allow memory to be fully processed
                     )
-                    logger.info(f"Scheduled memory-triggered reflection for user {user_id}")
-                
-                # Also trigger via reflection processor directly if available
-                if hasattr(self, 'reflection_processor') and self.reflection_processor:
-                    await self.reflection_processor.generate_reflection(
-                        reflection_type="memory_triggered",
-                        user_profile_id=user_id,
-                        memory_ids=[memory_id] if memory_id else None,
-                        trigger_source="important_memory_immediate",
-                    )
+                    logger.info(f"Scheduled fallback memory-triggered reflection for user {user_id}")
                     
             except Exception as e:
                 logger.error(f"Error triggering reflection for important memory: {str(e)}", exc_info=True)
