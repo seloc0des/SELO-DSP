@@ -1800,18 +1800,21 @@ export CONVERSATIONAL_MODEL_VAL
           echo "REFLECTION_SYNC_TIMEOUT_S=0" >> "$SCRIPT_DIR/backend/.env"
         fi
         grep -q '^REFLECTION_REQUIRED=' "$SCRIPT_DIR/backend/.env" || echo "REFLECTION_REQUIRED=true" >> "$SCRIPT_DIR/backend/.env"
-        grep -q '^CHAT_NUM_PREDICT=' "$SCRIPT_DIR/backend/.env" || echo "CHAT_NUM_PREDICT=320" >> "$SCRIPT_DIR/backend/.env"
+        # Unbounded chat generation (prompt-constrained). User can override post-install.
+        if grep -q '^CHAT_NUM_PREDICT=' "$SCRIPT_DIR/backend/.env"; then
+          sed -i -E "s|^CHAT_NUM_PREDICT=.*|CHAT_NUM_PREDICT=0|" "$SCRIPT_DIR/backend/.env" || true
+        else
+          echo "CHAT_NUM_PREDICT=0" >> "$SCRIPT_DIR/backend/.env"
+        fi
         grep -q '^CHAT_TEMPERATURE=' "$SCRIPT_DIR/backend/.env" || echo "CHAT_TEMPERATURE=0.6" >> "$SCRIPT_DIR/backend/.env"
         grep -q '^CHAT_TOP_K=' "$SCRIPT_DIR/backend/.env" || echo "CHAT_TOP_K=40" >> "$SCRIPT_DIR/backend/.env"
         grep -q '^CHAT_TOP_P=' "$SCRIPT_DIR/backend/.env" || echo "CHAT_TOP_P=0.9" >> "$SCRIPT_DIR/backend/.env"
         grep -q '^CHAT_NUM_CTX=' "$SCRIPT_DIR/backend/.env" || echo "CHAT_NUM_CTX=12288" >> "$SCRIPT_DIR/backend/.env"
+        # Unbounded reflections by default (prompt-constrained). User can override post-install.
         if grep -q '^REFLECTION_NUM_PREDICT=' "$SCRIPT_DIR/backend/.env"; then
-          current_predict=$(awk -F= '/^REFLECTION_NUM_PREDICT=/{print $2; exit}' "$SCRIPT_DIR/backend/.env")
-          if [ -z "$current_predict" ] || ! awk -v cur="$current_predict" 'BEGIN{exit(cur >= 640 ? 0 : 1)}'; then
-            sed -i -E "s|^REFLECTION_NUM_PREDICT=.*|REFLECTION_NUM_PREDICT=640|" "$SCRIPT_DIR/backend/.env" || true
-          fi
+          sed -i -E "s|^REFLECTION_NUM_PREDICT=.*|REFLECTION_NUM_PREDICT=0|" "$SCRIPT_DIR/backend/.env" || true
         else
-          echo "REFLECTION_NUM_PREDICT=640" >> "$SCRIPT_DIR/backend/.env"
+          echo "REFLECTION_NUM_PREDICT=0" >> "$SCRIPT_DIR/backend/.env"
         fi
         if grep -q '^REFLECTION_TEMPERATURE=' "$SCRIPT_DIR/backend/.env"; then
           sed -i -E "s|^REFLECTION_TEMPERATURE=.*|REFLECTION_TEMPERATURE=0.35|" "$SCRIPT_DIR/backend/.env" || true
