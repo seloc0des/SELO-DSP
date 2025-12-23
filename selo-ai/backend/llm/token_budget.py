@@ -24,7 +24,7 @@ def _resolve_chat_max_cap() -> int:
     Priority:
     1) CHAT_RESPONSE_MAX_TOKENS (explicit cap for responses)
     2) CHAT_MAX_TOKENS legacy env
-    3) Safe fallback of 320 tokens
+    3) Safe fallback of 480 tokens
     """
     try:
         cap = int(os.getenv("CHAT_RESPONSE_MAX_TOKENS", "0"))
@@ -32,9 +32,9 @@ def _resolve_chat_max_cap() -> int:
         cap = 0
     if cap <= 0:
         try:
-            cap = int(os.getenv("CHAT_MAX_TOKENS", "320"))
+            cap = int(os.getenv("CHAT_MAX_TOKENS", "480"))
         except Exception:
-            cap = 320
+            cap = 480
     return max(cap, 1)
 
 
