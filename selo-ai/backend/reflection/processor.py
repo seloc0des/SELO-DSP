@@ -3012,6 +3012,8 @@ Please regenerate your reflection following these identity constraints strictly.
                     "evolution_count": getattr(persona, "evolution_count", 0),
                     "stability_score": getattr(persona, "stability_score", 0.0),
                     "id": persona_id,
+                    "first_thoughts": getattr(persona, "first_thoughts", ""),
+                    "boot_directive": getattr(persona, "boot_directive", ""),
                 }
 
                 # Gather agent loop state for prompt context
