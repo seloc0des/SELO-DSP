@@ -7,7 +7,6 @@ to measure impact on quality, token usage, and violations.
 
 import logging
 import hashlib
-import random
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field
 from datetime import datetime, timezone

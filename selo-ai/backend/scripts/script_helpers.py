@@ -9,7 +9,7 @@ ensuring consistency with the main application's DI container.
 import os
 import sys
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 # Add backend and project root directories to sys.path for robust imports
 _SCRIPT_DIR = os.path.abspath(os.path.dirname(__file__))

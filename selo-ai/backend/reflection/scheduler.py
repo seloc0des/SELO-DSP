@@ -6,11 +6,29 @@ This module implements a scheduler for periodic and triggered reflection generat
 
 import logging
 import asyncio
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any
 import time
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger("selo.reflection.scheduler")
+
+# Scheduler configuration constants
+MISFIRE_GRACE_TIME_DAILY = 10800  # 3 hours in seconds
+MISFIRE_GRACE_TIME_WEEKLY = 10800  # 3 hours in seconds
+MISFIRE_GRACE_TIME_NIGHTLY = 7200  # 2 hours in seconds
+MAX_RETRY_ATTEMPTS = 3
+RETRY_BACKOFF_MAX_SECONDS = 8
+
+# Timezone helper to avoid duplication
+def _get_scheduler_timezone() -> ZoneInfo:
+    """Get timezone for scheduler jobs, defaulting to America/New_York."""
+    try:
+        tz_name = "America/New_York"
+        return ZoneInfo(tz_name)
+    except Exception as e:
+        logger.warning(f"Failed to load timezone, falling back to UTC: {e}")
+        return ZoneInfo("UTC")
 
 # Lightweight in-process execution tracking for health checks / diagnostics
 JOB_EXECUTION_STATE: Dict[str, Dict[str, Any]] = {}
@@ -77,7 +95,7 @@ async def run_reflection_for_all_users_job(reflection_type: str):
                     logger.info(f"Skipping {reflection_type} reflection for user {user_id} (no user interaction yet)")
                     continue
 
-                max_attempts = 3
+                max_attempts = MAX_RETRY_ATTEMPTS
                 attempt = 0
                 while attempt < max_attempts:
                     try:
@@ -97,7 +115,7 @@ async def run_reflection_for_all_users_job(reflection_type: str):
                                 exc_info=True,
                             )
                         else:
-                            backoff = min(2 ** attempt, 8)
+                            backoff = min(2 ** attempt, RETRY_BACKOFF_MAX_SECONDS)
                             logger.warning(
                                 f"[Job] Attempt {attempt} failed for {reflection_type} reflection user {user_id}, retrying in {backoff}s: {attempt_err}"
                             )
@@ -134,7 +152,10 @@ async def run_reflection_for_all_users_job(reflection_type: str):
 
 
 async def run_daily_reflections():
-    return await run_reflection_for_all_users_job("daily")
+    logger.info("🌙 [NIGHTLY JOB] Starting daily reflection job execution at %s", datetime.now(timezone.utc).isoformat())
+    result = await run_reflection_for_all_users_job("daily")
+    logger.info("✅ [NIGHTLY JOB] Daily reflection job completed at %s", datetime.now(timezone.utc).isoformat())
+    return result
 
 
 async def run_weekly_reflections():
@@ -186,6 +207,7 @@ async def run_relationship_answer_audit():
 
 async def refresh_nightly_mantras():
     """Refresh daily mantras for all active users after nightly persona evolution."""
+    logger.info("🌙 [NIGHTLY JOB] Starting nightly mantra refresh job execution at %s", datetime.now(timezone.utc).isoformat())
 
     services = await _get_services()
     reflection_processor = services.get("reflection_processor")
@@ -241,6 +263,7 @@ async def refresh_nightly_mantras():
         job_state.get("succeeded"),
         job_state.get("failed"),
     )
+    logger.info("✅ [NIGHTLY JOB] Nightly mantra refresh job completed at %s", datetime.now(timezone.utc).isoformat())
 
 
 async def _analyze_relationship_answers_for_user(
@@ -381,18 +404,7 @@ class ReflectionScheduler:
         try:
             # Register daily reflection job to run at midnight (00:00)
             job_id = "reflection_daily"
-            # Determine a valid tzinfo for America/New_York (handles DST)
-            tzinfo = None
-            try:
-                import pytz  # type: ignore
-                tzinfo = pytz.timezone("America/New_York")
-            except Exception:
-                try:
-                    import pytz  # type: ignore
-                    tzinfo = pytz.timezone("US/Eastern")
-                except Exception:
-                    tzinfo = None
-                    logger.warning("Falling back to scheduler default timezone (UTC) for daily reflection job")
+            tzinfo = _get_scheduler_timezone()
             
             # Register with the scheduler service (with misfire grace)
             add_kwargs = {
@@ -402,11 +414,10 @@ class ReflectionScheduler:
                 "hour": 0,
                 "minute": 0,
                 "replace_existing": True,
-                "misfire_grace_time": 10800,  # allow up to 3 hours catch-up
+                "misfire_grace_time": MISFIRE_GRACE_TIME_DAILY,
                 "coalesce": True,
+                "timezone": tzinfo,
             }
-            if tzinfo:
-                add_kwargs["timezone"] = tzinfo
             job = await self.scheduler_service.add_job(**add_kwargs)
             if not job:
                 logger.error("Failed to register daily reflection job")
@@ -427,18 +438,7 @@ class ReflectionScheduler:
         try:
             # Register weekly reflection job to run on Sundays at midnight
             job_id = "reflection_weekly"
-            # Determine a valid tzinfo for America/New_York (handles DST)
-            tzinfo = None
-            try:
-                import pytz  # type: ignore
-                tzinfo = pytz.timezone("America/New_York")
-            except Exception:
-                try:
-                    import pytz  # type: ignore
-                    tzinfo = pytz.timezone("US/Eastern")
-                except Exception:
-                    tzinfo = None
-                    logger.warning("Falling back to scheduler default timezone (UTC) for weekly reflection job")
+            tzinfo = _get_scheduler_timezone()
             
             # Register with the scheduler service (with misfire grace)
             add_kwargs = {
@@ -449,11 +449,10 @@ class ReflectionScheduler:
                 "hour": 0,
                 "minute": 0,
                 "replace_existing": True,
-                "misfire_grace_time": 10800,
+                "misfire_grace_time": MISFIRE_GRACE_TIME_WEEKLY,
                 "coalesce": True,
+                "timezone": tzinfo,
             }
-            if tzinfo:
-                add_kwargs["timezone"] = tzinfo
             job = await self.scheduler_service.add_job(**add_kwargs)
             if not job:
                 logger.error("Failed to register weekly reflection job")
@@ -473,17 +472,7 @@ class ReflectionScheduler:
         
         try:
             job_id = "reflection_relationship_questions"
-            tzinfo = None
-            try:
-                import pytz  # type: ignore
-                tzinfo = pytz.timezone("America/New_York")
-            except Exception:
-                try:
-                    import pytz  # type: ignore
-                    tzinfo = pytz.timezone("US/Eastern")
-                except Exception:
-                    tzinfo = None
-                    logger.warning("Falling back to scheduler default timezone (UTC) for relationship questions job")
+            tzinfo = _get_scheduler_timezone()
 
             add_kwargs = {
                 "job_id": job_id,
@@ -492,11 +481,10 @@ class ReflectionScheduler:
                 "hour": 1,
                 "minute": 15,
                 "replace_existing": True,
-                "misfire_grace_time": 7200,
+                "misfire_grace_time": MISFIRE_GRACE_TIME_NIGHTLY,
                 "coalesce": True,
+                "timezone": tzinfo,
             }
-            if tzinfo:
-                add_kwargs["timezone"] = tzinfo
             job = await self.scheduler_service.add_job(**add_kwargs)
             if not job:
                 logger.error("Failed to register relationship questions job")
@@ -516,17 +504,7 @@ class ReflectionScheduler:
         
         try:
             job_id = "relationship_answer_audit"
-            tzinfo = None
-            try:
-                import pytz  # type: ignore
-                tzinfo = pytz.timezone("America/New_York")
-            except Exception:
-                try:
-                    import pytz  # type: ignore
-                    tzinfo = pytz.timezone("US/Eastern")
-                except Exception:
-                    tzinfo = None
-                    logger.warning("Falling back to scheduler default timezone (UTC) for relationship answer audit job")
+            tzinfo = _get_scheduler_timezone()
 
             add_kwargs = {
                 "job_id": job_id,
@@ -536,11 +514,10 @@ class ReflectionScheduler:
                 "hour": 2,
                 "minute": 5,
                 "replace_existing": True,
-                "misfire_grace_time": 7200,
+                "misfire_grace_time": MISFIRE_GRACE_TIME_NIGHTLY,
                 "coalesce": True,
+                "timezone": tzinfo,
             }
-            if tzinfo:
-                add_kwargs["timezone"] = tzinfo
             job = await self.scheduler_service.add_job(**add_kwargs)
             if not job:
                 logger.error("Failed to register relationship answer audit job")
@@ -560,17 +537,7 @@ class ReflectionScheduler:
         
         try:
             job_id = "reflection_nightly_mantra_refresh"
-            tzinfo = None
-            try:
-                import pytz  # type: ignore
-                tzinfo = pytz.timezone("America/New_York")
-            except Exception:
-                try:
-                    import pytz  # type: ignore
-                    tzinfo = pytz.timezone("US/Eastern")
-                except Exception:
-                    tzinfo = None
-                    logger.warning("Falling back to scheduler default timezone (UTC) for nightly mantra refresh job")
+            tzinfo = _get_scheduler_timezone()
 
             add_kwargs = {
                 "job_id": job_id,
@@ -579,11 +546,10 @@ class ReflectionScheduler:
                 "hour": 0,
                 "minute": 10,
                 "replace_existing": True,
-                "misfire_grace_time": 7200,
+                "misfire_grace_time": MISFIRE_GRACE_TIME_NIGHTLY,
                 "coalesce": True,
+                "timezone": tzinfo,
             }
-            if tzinfo:
-                add_kwargs["timezone"] = tzinfo
 
             job = await self.scheduler_service.add_job(**add_kwargs)
             if not job:

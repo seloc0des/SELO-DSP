@@ -7,7 +7,7 @@ This module provides API endpoints for the Dynamic Persona System.
 import logging
 import os
 import pathlib
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel, Field

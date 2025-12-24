@@ -6,7 +6,7 @@ Ensures LLM responses adhere to constraints and don't hallucinate information.
 
 import re
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 logger = logging.getLogger("selo.response_validator")
 

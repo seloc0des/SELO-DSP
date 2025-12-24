@@ -9,12 +9,11 @@ import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete, desc, asc, func
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import select, update, desc, asc, func
 from sqlalchemy.orm import selectinload
 
 from ..models.conversation import Conversation, ConversationMessage, Memory
-from ..session import AsyncSessionLocal, get_session
+from ..session import get_session
 
 logger = logging.getLogger(__name__)
 

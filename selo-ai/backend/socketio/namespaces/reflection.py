@@ -5,8 +5,6 @@ This module implements the Socket.IO namespace for reflection-related events.
 """
 
 import logging
-import json
-from typing import Dict, List, Optional, Any
 
 logger = logging.getLogger("selo.socketio.reflection")
 

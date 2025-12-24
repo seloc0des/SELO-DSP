@@ -6,9 +6,9 @@ learnings, concepts, and their connections.
 """
 
 import uuid
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any
 
-from sqlalchemy import Column, String, Text, DateTime, Float, Boolean, ForeignKey, Integer, JSON
+from sqlalchemy import Column, String, Text, DateTime, Float, Boolean, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from ..db.base import Base
 from ..utils.datetime import utc_now, isoformat_utc

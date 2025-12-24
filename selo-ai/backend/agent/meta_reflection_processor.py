@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from ..db.repositories.reflection import ReflectionRepository
 from ..db.repositories.persona import PersonaRepository

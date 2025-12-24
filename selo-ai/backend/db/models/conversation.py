@@ -10,7 +10,7 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 import uuid
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 
 from ..base import Base
 

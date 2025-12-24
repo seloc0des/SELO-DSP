@@ -11,7 +11,6 @@ import logging
 import time
 from typing import AsyncGenerator, Dict, Any, Optional, Callable
 from dataclasses import dataclass
-import subprocess
 import aiohttp
 
 logger = logging.getLogger("selo.core.streaming_llm")

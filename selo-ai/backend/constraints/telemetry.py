@@ -8,7 +8,7 @@ for monitoring and optimization.
 import logging
 import time
 from typing import Dict, List, Any, Optional
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from collections import defaultdict, deque
 from threading import Lock

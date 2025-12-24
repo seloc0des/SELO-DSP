@@ -8,9 +8,7 @@ Includes deduplication logic to prevent redundant memory creation.
 import re
 import hashlib
 import logging
-from typing import Dict, List, Optional, Any, Tuple
-from datetime import datetime, timedelta
-import asyncio
+from typing import Dict, List, Optional, Any
 
 logger = logging.getLogger("selo.memory.extractor")
 

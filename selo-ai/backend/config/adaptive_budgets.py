@@ -10,7 +10,7 @@ Dynamically adjusts token budgets for constraints and responses based on:
 
 import logging
 import os
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional
 from dataclasses import dataclass
 
 logger = logging.getLogger("selo.adaptive_budgets")

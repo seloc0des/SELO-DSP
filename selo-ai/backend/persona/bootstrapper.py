@@ -4,87 +4,9 @@ import os
 import re
 from typing import Optional, Dict, Any, List
 
-try:
-    from ..utils.text_utils import count_words
-except ImportError:
-    from backend.utils.text_utils import count_words
-
-try:
-    from ..utils.system_profile import detect_system_profile
-except ImportError:
-    from backend.utils.system_profile import detect_system_profile
-
-# Robust import of boot seed helper to support both package and script contexts
-try:
-    # Preferred: package-relative import when backend is a package
-    from ..core.boot_seed_system import get_random_directive  # type: ignore
-except Exception:
-    try:
-        # Fallback: absolute import when executed as a module/script
-        from backend.core.boot_seed_system import get_random_directive  # type: ignore
-    except Exception:
-        # Final fallback: define a minimal local helper that emulates get_random_directive
-        import pathlib, random
-        def get_random_directive() -> str:  # type: ignore
-            """Fallback directive loader.
-            Attempts to read Reports/Boot_Seed_Directive_Prompts.md and return a random block; otherwise a static note.
-            """
-            try:
-                import logging as _log
-                
-                # Check for environment variable first (best for deployments)
-                reports_dir = os.getenv("SELO_REPORTS_DIR")
-                if reports_dir:
-                    seeds_path = pathlib.Path(reports_dir) / "Boot_Seed_Directive_Prompts.md"
-                    if seeds_path.exists():
-                        _log.info(f"✅ Boot directive file found via SELO_REPORTS_DIR: {seeds_path}")
-                    else:
-                        _log.warning(f"SELO_REPORTS_DIR set but file not found: {seeds_path}")
-                        seeds_path = None
-                else:
-                    # Fallback: search common locations relative to this file
-                    here = pathlib.Path(__file__).resolve()
-                    possible_paths = [
-                        # Current project structure: backend/ is two levels up from this file
-                        here.parents[2] / "Reports" / "Boot_Seed_Directive_Prompts.md",
-                        # Alternative: Reports at same level as selo-ai directory
-                        here.parents[3] / "Reports" / "Boot_Seed_Directive_Prompts.md",
-                        # Alternative: Reports inside selo-ai directory
-                        here.parents[1] / "Reports" / "Boot_Seed_Directive_Prompts.md",
-                        # Alternative: Reports at root level
-                        here.parents[4] / "Reports" / "Boot_Seed_Directive_Prompts.md"
-                    ]
-                    
-                    seeds_path = None
-                    for idx, path in enumerate(possible_paths, 1):
-                        if path.exists():
-                            seeds_path = path
-                            _log.info(f"✅ Boot directive file found at location #{idx}: {seeds_path}")
-                            break
-                
-                if not seeds_path:
-                    searched_info = f"SELO_REPORTS_DIR={reports_dir}" if reports_dir else "relative path search"
-                    _log.error(f"❌ Boot directives file not found via {searched_info}")
-                    _log.warning("Boot_Seed_Directive_Prompts.md not found - using fallback directive")
-                    raise FileNotFoundError("Boot_Seed_Directive_Prompts.md not found")
-                
-                text = seeds_path.read_text(encoding="utf-8")
-                parts = [p.strip() for p in text.split("\n---\n") if p.strip()]
-                import logging as _log
-                _log.info(f"🔍 Found {len(parts)} directive parts in file")
-                
-                if parts:
-                    selected = random.choice(parts)
-                    # Show more of the directive for debugging, but still truncate for readability
-                    preview = selected[:300].replace('\n', ' ')
-                    _log.info(f"🎲 Randomly selected directive: {preview}...")
-                    return selected
-                # If delimiter not present, pick first ~800 chars
-                return text[:800]
-            except Exception as e:
-                import logging as _log
-                _log.error(f"❌ Failed to load boot directives: {e}")
-                return "Initialization note: SELO adopts a quiet, reflective posture. Observe, remember, cohere."
+from ..utils.text_utils import count_words
+from ..utils.system_profile import detect_system_profile
+from ..core.boot_seed_system import get_random_directive
 
 logger = logging.getLogger("selo.persona.bootstrapper")
 
@@ -97,7 +19,8 @@ def _read_int_env(name: str, default: int) -> int:
             return default
         value = int(float(raw))
         return value if value > 0 else default
-    except Exception:
+    except (ValueError, TypeError) as e:
+        logger.debug(f"Failed to parse env var {name}: {e}")
         return default
 
 
@@ -107,7 +30,8 @@ def _get_analytical_budget() -> int:
     try:
         profile = detect_system_profile()
         return profile.get("budgets", {}).get("analytical_max_tokens", 512)
-    except Exception:
+    except (KeyError, AttributeError, ImportError) as e:
+        logger.debug(f"Failed to detect system profile: {e}")
         return 512
 
 # Use system profile analytical budget as baseline, but allow env overrides
@@ -154,8 +78,8 @@ class PersonaBootstrapper:
         try:
             self._system_profile = detect_system_profile()
             self._is_standard_tier = self._system_profile.get("tier") == "standard"
-        except Exception:
-            logger.warning("Failed to detect system tier, assuming standard tier for safety")
+        except (ImportError, KeyError, AttributeError, TypeError) as e:
+            logger.warning(f"Failed to detect system tier, assuming standard tier for safety: {e}")
             self._is_standard_tier = True
 
     async def ensure_persona(self) -> Optional[Dict[str, Any]]:
@@ -386,8 +310,8 @@ class PersonaBootstrapper:
                     logger.info(f"✅ Successfully persisted {len(trait_items)} traits")
                 else:
                     logger.warning(f"Traits data is not a list: {type(trait_items)} - {trait_items}")
-            except Exception:
-                logger.warning("Failed to persist some traits during bootstrap", exc_info=True)
+            except (AttributeError, ValueError, TypeError, KeyError) as e:
+                logger.warning(f"Failed to persist some traits during bootstrap: {e}", exc_info=True)
 
             # Seed first conversation entry to ground reflections
             try:
@@ -433,12 +357,12 @@ class PersonaBootstrapper:
                 try:
                     from ..db.repositories.persona import PersonaTrait  # type: ignore
                     from ...backend.socketio.registry import get_socketio_server  # type: ignore
-                except Exception:
+                except ImportError:
                     try:
                         # Fallback absolute imports
                         from backend.db.repositories.persona import PersonaTrait  # type: ignore
                         from backend.socketio.registry import get_socketio_server  # type: ignore
-                    except Exception:
+                    except ImportError:
                         get_socketio_server = None  # type: ignore
                 
                 # Count traits if available
@@ -446,7 +370,7 @@ class PersonaBootstrapper:
                 try:
                     traits_list = getattr(persona_after, "traits", []) or []
                     trait_count = len(traits_list)
-                except Exception:
+                except (AttributeError, TypeError):
                     trait_count = 0
                 sio = get_socketio_server() if callable(get_socketio_server) else None
                 if sio is not None:
@@ -462,8 +386,8 @@ class PersonaBootstrapper:
                             "trait_count": trait_count,
                         }
                     })
-            except Exception:
-                logger.debug("Socket.io bootstrap summary emit skipped (non-critical)", exc_info=True)
+            except (AttributeError, RuntimeError, ConnectionError) as e:
+                logger.debug(f"Socket.io bootstrap summary emit skipped (non-critical): {e}", exc_info=True)
 
             # ============================================================================
             # CRITICAL: Comprehensive DB verification before declaring success
@@ -626,9 +550,9 @@ class PersonaBootstrapper:
             
             return final_persona
             
-        except Exception:
+        except (ValueError, TypeError, KeyError, AttributeError, RuntimeError) as e:
             logger.error("=" * 80)
-            logger.error("PERSONA BOOTSTRAP FAILED - NO FALLBACKS MODE")
+            logger.error(f"PERSONA BOOTSTRAP FAILED - NO FALLBACKS MODE: {e}")
             logger.error("=" * 80)
             logger.error("Persona bootstrap failed", exc_info=True)
             logger.error("Installation cannot proceed without valid persona data")
@@ -715,7 +639,8 @@ class PersonaBootstrapper:
 
         try:
             history = await self.conversation_repo.get_conversation_history(session_id=str(user_id), limit=1)
-        except Exception:
+        except (AttributeError, RuntimeError, ConnectionError) as e:
+            logger.debug(f"Failed to get conversation history: {e}")
             history = []
 
         if history:
@@ -928,9 +853,9 @@ class PersonaBootstrapper:
             else:
                 logger.info("🌱 Selected boot directive for persona generation (no title)")
             logger.debug(f"🎯 Using directive text: {preview}")
-        except Exception:
+        except (ValueError, KeyError, IndexError, AttributeError) as e:
             # Directive parsing/logging failed - continue with whatever directive was loaded
-            pass
+            logger.debug(f"Directive parsing/logging failed: {e}")
 
         return {
             "installation": {
@@ -1757,7 +1682,8 @@ Write your complete reflection in ENGLISH now:"""
                 "Reinforce {value} through transparent dialogue.",
             )
             for idx, value in enumerate(core_values[:4]):
-                formatted = templates[idx % len(templates)].format(value=value)
+                template = templates[idx % len(templates)]
+                formatted = template.replace("{value}", value)
                 if formatted not in principle_values:
                     principle_values.append(formatted)
                 if len(principle_values) >= 2:

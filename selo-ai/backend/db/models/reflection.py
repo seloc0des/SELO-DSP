@@ -5,7 +5,7 @@ These models map to the tables created in init_db.py.
 
 import uuid
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 
 from sqlalchemy import Column, String, DateTime, ForeignKey, Float, LargeBinary, Integer, Text
 from sqlalchemy.dialects.postgresql import UUID, JSONB

@@ -30,7 +30,7 @@ async def update_examples():
     
     # Get all existing examples
     async with get_session() as session:
-        from sqlalchemy import select, update
+        from sqlalchemy import select
         from backend.db.models.example import ReflectionExample
         
         # Delete all existing examples

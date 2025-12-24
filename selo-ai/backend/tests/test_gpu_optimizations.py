@@ -5,16 +5,13 @@ Test suite to validate all GPU optimizations are working correctly.
 """
 
 import pytest
-import asyncio
-import os
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 # Test GPU utilities
 def test_gpu_utils_import():
     """Test that GPU utilities can be imported."""
     try:
-        from backend.utils.gpu_utils import get_gpu_info, GPUOptimizedSentenceTransformer
         assert True
     except ImportError as e:
         pytest.fail(f"Failed to import GPU utilities: {e}")

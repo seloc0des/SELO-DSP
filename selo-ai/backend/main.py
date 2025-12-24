@@ -4,8 +4,6 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
 from typing import Any, Dict, List, Optional
 from .models.pagination import PaginatedResponse
-import subprocess
-import json
 import uuid
 import os
 import requests
@@ -13,28 +11,29 @@ from dotenv import load_dotenv
 import trafilatura
 import logging
 from contextlib import asynccontextmanager
-from .utils.logging_config import setup_logging, set_correlation_id, get_correlation_id
+from .utils.logging_config import setup_logging
 from .middleware.rate_limiting import RateLimitMiddleware
 import socketio
 import asyncio
 import time
 import inspect
 from datetime import datetime, timedelta, timezone
-from .utils.datetime import utc_now, isoformat_utc, utc_iso
-from .utils.numeric_utils import clamp
+from .utils.datetime import utc_now, utc_iso
 from .llm.dual_llm_config import get_llm_model
 from .llm.response_validator import ResponseValidator
 import pathlib
-import random
-import hashlib
 from collections import OrderedDict
-from .core.boot_seed_system import get_random_directive, normalize_directive
 from .config.performance_config import get_performance_config
 from .utils.system_profile import detect_system_profile
 from .utils.system_metrics import get_system_metrics_collector, detect_diagnostic_trigger, DiagnosticMode
 # Option B: Removed compose_opening and generate_first_intro_from_directive
 # LLM handles all introductions naturally via persona system prompt
 from .reflection.default_relationship_questions import DEFAULT_RELATIONSHIP_QUESTION_SEED
+
+# Configuration constants
+RATE_LIMIT_REQUESTS_PER_MINUTE = 120
+RATE_LIMIT_BURST_SIZE = 20
+SOCKETIO_MAX_HTTP_BUFFER_SIZE = 1_000_000
 
 # Configure structured logging
 setup_logging(log_level="INFO", structured=True)
@@ -56,24 +55,11 @@ _env_defaults = {
 for _key, _value in _env_defaults.items():
     os.environ.setdefault(_key, _value)
 
-# Only set LLM_TIMEOUT as fallback if not already configured by installer
-# The installer sets appropriate values based on detected hardware tier
-# High-performance hardware gets 0 (unbounded), but we should respect explicit config
+# Generation is controlled by token limits and word counts, not timeouts
+# Set LLM_TIMEOUT to 0 (unbounded) - prompts constrain output via num_predict
 if "LLM_TIMEOUT" not in os.environ:
-    if SYSTEM_PROFILE["tier"] == "high":
-        os.environ["LLM_TIMEOUT"] = "0"
-        logger.info("⚙️ LLM_TIMEOUT not set - defaulting to unbounded (0) for high-performance tier")
-    else:
-        # For standard tier, use unbounded by default - let prompts constrain output
-        # Bootstrap and reflection operations can take several minutes on 8GB GPUs
-        os.environ["LLM_TIMEOUT"] = "0"
-        logger.info("⚙️ LLM_TIMEOUT not set - defaulting to unbounded (0) for standard tier")
-else:
-    logger.info("✓ LLM_TIMEOUT configured: %s seconds (0=unbounded)", os.environ["LLM_TIMEOUT"])
-
-if os.environ.get("REFLECTION_LLM_TIMEOUT_S") in (None, ""):
-    # No explicit setting; preserve legacy behavior (no timeout) unless user opts in
-    os.environ.setdefault("REFLECTION_LLM_TIMEOUT_S", "0")
+    os.environ["LLM_TIMEOUT"] = "0"
+    logger.info("⚙️ LLM generation controlled by token limits (num_predict), not timeouts")
 
 persona_token_defaults = {
     "low": {
@@ -161,12 +147,13 @@ def _polish_first_response(text: str, persona_name: Optional[str], conversation_
                     uniq.append(seg)
             if uniq:
                 s = " ".join(uniq)
-        except Exception:
+        except (AttributeError, ValueError, TypeError) as e:
             # Deduplication is optional - gracefully fall through if it fails
-            pass
+            logger.debug(f"Text deduplication failed: {e}")
 
         return s if s else original
-    except Exception:
+    except (AttributeError, ValueError, TypeError) as e:
+        logger.debug(f"Polish first response failed: {e}")
         return text
 
 
@@ -196,12 +183,12 @@ def _format_system_snapshot(system_status: Optional[Dict[str, Any]], gpu_status:
     try:
         cpu_info = (system_status or {}).get("cpu") or {}
         cpu_percent = cpu_info.get("percent")
-    except Exception:
+    except (KeyError, AttributeError, TypeError):
         cpu_percent = None
     if isinstance(cpu_percent, (int, float)):
         try:
             parts.append(f"CPU {cpu_percent:.0f}%")
-        except Exception:
+        except (ValueError, TypeError):
             parts.append(f"CPU {cpu_percent}%")
 
     mem = (system_status or {}).get("memory") or {}
@@ -214,7 +201,7 @@ def _format_system_snapshot(system_status: Optional[Dict[str, Any]], gpu_status:
                 parts.append(f"RAM {mu:.1f}/{mt:.1f}GB ({mp:.0f}% used)")
             else:
                 parts.append(f"RAM {mu:.1f}/{mt:.1f}GB")
-    except Exception:
+    except (KeyError, AttributeError, TypeError, ValueError):
         pass
 
     disk = (system_status or {}).get("disk") or {}
@@ -227,7 +214,7 @@ def _format_system_snapshot(system_status: Optional[Dict[str, Any]], gpu_status:
                 parts.append(f"Disk {du:.1f}/{dt:.1f}GB ({dp:.0f}% used)")
             else:
                 parts.append(f"Disk {du:.1f}/{dt:.1f}GB")
-    except Exception:
+    except (KeyError, AttributeError, TypeError, ValueError):
         pass
 
     try:
@@ -235,7 +222,7 @@ def _format_system_snapshot(system_status: Optional[Dict[str, Any]], gpu_status:
         if isinstance(load_avg, (list, tuple)) and load_avg:
             la = ", ".join(f"{float(x):.2f}" for x in load_avg[:3])
             parts.append(f"Load avg {la}")
-    except Exception:
+    except (KeyError, AttributeError, TypeError, ValueError):
         pass
 
     try:
@@ -259,7 +246,7 @@ def _format_system_snapshot(system_status: Optional[Dict[str, Any]], gpu_status:
                 gpu_parts.append(f"{temp:.0f}°C")
             joined = ", ".join(gpu_parts) if gpu_parts else "available"
             parts.append(f"{name}: {joined}")
-    except Exception:
+    except (KeyError, AttributeError, TypeError, ValueError):
         pass
 
     summary = ", ".join(p for p in parts if p)
@@ -367,13 +354,13 @@ def _compose_acknowledgment_prefix(user_text: Optional[str], persona_obj: Option
                             tval = (getattr(t, "value", None) or t.get("value"))
                             if isinstance(tname, str) and tname.lower() == name and isinstance(tval, (int, float)):
                                 return float(tval)
-                        except Exception:
+                        except (AttributeError, KeyError, TypeError, ValueError):
                             continue
                     # look in persona maps
                     for src in (personality, comms):
                         if isinstance(src, dict) and name in src and isinstance(src[name], (int, float)):
                             return float(src[name])
-                except Exception:
+                except (AttributeError, KeyError, TypeError):
                     return None
                 return None
 
@@ -381,9 +368,9 @@ def _compose_acknowledgment_prefix(user_text: Optional[str], persona_obj: Option
             conciseness = _read_level("conciseness") or conciseness
             curiosity = _read_level("curiosity") or curiosity
             decisiveness = _read_level("decisiveness") or decisiveness
-        except Exception:
+        except (AttributeError, KeyError, TypeError) as e:
             # Trait reading is optional - use defaults if persona traits unavailable
-            pass
+            logger.debug(f"Failed to read persona traits for acknowledgment: {e}")
 
         # Tone selection
         start = "On your point about " if warmth >= 0.6 else "Regarding "
@@ -401,7 +388,8 @@ def _compose_acknowledgment_prefix(user_text: Optional[str], persona_obj: Option
         if curiosity >= 0.7:
             prefix = prefix.rstrip(".") + "."
         return prefix.strip()
-    except Exception:
+    except (AttributeError, KeyError, TypeError, ValueError) as e:
+        logger.debug(f"Failed to compose acknowledgment prefix: {e}")
         return None
 
 def _ensure_acknowledgment(reply: str, user_text: Optional[str], persona_obj: Optional[Any]) -> str:
@@ -431,7 +419,8 @@ def _ensure_acknowledgment(reply: str, user_text: Optional[str], persona_obj: Op
         if ack_prefix:
             return f"{ack_prefix} {r}".strip()
         return r
-    except Exception:
+    except (AttributeError, ValueError, TypeError) as e:
+        logger.debug(f"Failed to ensure acknowledgment: {e}")
         return reply or ""
 
 def _response_needs_continuation(text: Optional[str], stop_reason: Optional[str] = None) -> bool:
@@ -444,7 +433,7 @@ def _response_needs_continuation(text: Optional[str], stop_reason: Optional[str]
         # Don't use heuristics - they cause false positives and infinite loops
         # Only trust the stop_reason from the LLM
         return False
-    except Exception:
+    except (AttributeError, ValueError, TypeError):
         return False
 
 async def _request_additional_completion(
@@ -473,7 +462,8 @@ async def _request_additional_completion(
         candidate = result.get("content") or result.get("completion") or ""
         addition = _extract_new_tail(partial_response, candidate)
         return addition or None
-    except Exception:
+    except (AttributeError, KeyError, TypeError) as e:
+        logger.debug(f"Failed to request additional completion: {e}")
         return None
 
 def _build_continuation_prompt(base_prompt: str) -> str:
@@ -491,7 +481,7 @@ def _extract_stop_reason(metadata: Optional[Any]) -> Optional[str]:
                 value = metadata.get(key)
                 if value:
                     return str(value)
-    except Exception:
+    except (AttributeError, KeyError, TypeError):
         return None
     return None
 
@@ -506,7 +496,7 @@ def _extract_new_tail(existing: str, candidate: str) -> str:
         import os
         prefix = os.path.commonprefix([existing, candidate])
         return candidate[len(prefix):]
-    except Exception:
+    except (AttributeError, ValueError, TypeError):
         return ""
 
 # Optional: background pre-warm of LLMs to reduce first-turn latency
@@ -539,7 +529,7 @@ async def _prewarm_models(app: FastAPI):
         await _do("chat", "conversational", "warmup_c1")
         await _do("chat", "conversational", "warmup_c2")
     except Exception as e:
-        logging.info(f"Model prewarm skipped/failed: {e}")
+        logging.debug(f"Model prewarm skipped (non-critical): {e}")
 
 async def _keepalive_prewarm_loop(app: FastAPI):
     """Periodically run tiny prompts to keep models resident and graphs hot.
@@ -610,7 +600,6 @@ async def initialize_services():
     from .memory.vector_store import VectorStore
     from .reflection.scheduler import ReflectionScheduler
     from .scheduler.factory import SchedulerFactory
-    from .api.dependencies import initialize_dependencies
     # Load centralized app configuration for consistent timeouts and model settings
     from .config.app_config import get_app_config
     from .agent.affective_state_manager import AffectiveStateManager
@@ -622,9 +611,8 @@ async def initialize_services():
     from .agent.autobiographical_episode_service import AutobiographicalEpisodeService
     
     # Import resilience systems
-    from .core.startup_validator import run_startup_validation
     from .core.health_monitor import health_monitor
-    from .core.graceful_degradation import register_all_fallbacks, assess_and_adjust_degradation
+    from .core.graceful_degradation import register_all_fallbacks
     
     # Note: Startup validation will run via lifespan event to avoid blocking initialization
     logging.info("🔄 Startup validation scheduled for lifespan startup")
@@ -657,7 +645,7 @@ async def initialize_services():
         def _base(n: str) -> str:
             try:
                 return n.split(":", 1)[0]
-            except Exception:
+            except (ValueError, IndexError):
                 return n
         available_full = set(n for n in names if n)
         available_base = {_base(n) for n in available_full}
@@ -862,12 +850,23 @@ async def initialize_services():
     from .socketio.registry import register_socketio_server, get_socketio_server
     sio = get_socketio_server()
     if sio is None:
+        # Parse CORS origins from environment variable
+        cors_origins_env = os.getenv("CORS_ORIGINS", "http://localhost:3000")
+        # Support both comma-separated string and wildcard
+        if cors_origins_env == "*":
+            socketio_cors_origins = "*"
+            logger.warning(
+                "⚠️  SECURITY WARNING: Socket.IO CORS is set to wildcard (*). "
+                "This allows connections from ANY origin. "
+                "For production, set CORS_ORIGINS to specific origins in backend/.env"
+            )
+        else:
+            socketio_cors_origins = [origin.strip() for origin in cors_origins_env.split(",")]
+            logger.info(f"Socket.IO CORS restricted to: {socketio_cors_origins}")
+        
         sio = socketio.AsyncServer(
             async_mode="asgi",
-            # SECURITY WARNING: Wildcard CORS allows requests from any origin.
-            # For production, restrict to specific origins via CORS_ORIGINS env var.
-            # Socket.IO CORS is separate from FastAPI CORS middleware.
-            cors_allowed_origins="*",
+            cors_allowed_origins=socketio_cors_origins,
             engineio_logger=True,
             async_handlers=True,
             # Keep connections alive much longer when browser tabs are backgrounded
@@ -876,7 +875,7 @@ async def initialize_services():
             ping_timeout=app_cfg.socketio_ping_timeout,
             ping_interval=app_cfg.socketio_ping_interval,
             allow_upgrades=True,  # allow upgrade from polling to WebSocket when possible
-            max_http_buffer_size=1_000_000,
+            max_http_buffer_size=SOCKETIO_MAX_HTTP_BUFFER_SIZE,
         )
         register_socketio_server(sio)
     
@@ -934,8 +933,8 @@ async def initialize_services():
         reflection_namespace.register(sio)
         try:
             reflection_processor.reflection_namespace = reflection_namespace
-        except Exception:
-            logging.debug("Unable to assign reflection namespace to processor", exc_info=True)
+        except AttributeError as e:
+            logging.debug(f"Unable to assign reflection namespace to processor: {e}", exc_info=True)
         app.state.reflection_namespace = reflection_namespace
 
         # Register chat namespace for streaming chat responses
@@ -1152,57 +1151,66 @@ def _build_baseline_reflection(session_id: str) -> Dict[str, Any]:
 # Setup lifespan for FastAPI to manage service lifecycle
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Use bounded waiting by default. We no longer force unbounded timeouts even if
-    # REFLECTION_ENFORCE_NO_TIMEOUTS is set; that toggle is deprecated in favor of
-    # explicit timeout values (REFLECTION_SYNC_TIMEOUT_S and REFLECTION_LLM_TIMEOUT_S).
+    # Reflection configuration: synchronous mode with token/word limits (no timeouts)
     try:
         _env = os.environ
-        if _env.get("REFLECTION_ENFORCE_NO_TIMEOUTS", "").lower() in ("1","true","yes"):
-            logging.info(
-                "REFLECTION_ENFORCE_NO_TIMEOUTS is set but deprecated. Ignoring unbounded enforcement; "
-                "using bounded timeouts from REFLECTION_SYNC_TIMEOUT_S and REFLECTION_LLM_TIMEOUT_S."
-            )
-        else:
-            logging.info("Using bounded reflection timeouts (configurable via environment).")
-    except Exception as _enf_err:
-        logging.warning(f"Failed during reflection timeout policy configuration: {_enf_err}")
-
-    # Establish defaults: strict reflection-first with bounded waiting unless explicitly configured otherwise
-    try:
-        _env = os.environ
-        # Only set defaults if not already provided by the service environment
         _env.setdefault("REFLECTION_REQUIRED", "true")
         _env.setdefault("REFLECTION_SYNC_MODE", "sync")  # chat waits for reflection
-        # Default to unbounded timeouts to honor strict reflection-first unless explicitly bounded via env
-        # If environment provides positive values, they will be respected.
-        try:
-            cur_sync = float(_env.get("REFLECTION_SYNC_TIMEOUT_S", "")) if _env.get("REFLECTION_SYNC_TIMEOUT_S") is not None else None
-        except (ValueError, TypeError) as e:
-            logging.warning(f"Invalid REFLECTION_SYNC_TIMEOUT_S value: {e}")
-            cur_sync = None
-        try:
-            cur_llm = float(_env.get("REFLECTION_LLM_TIMEOUT_S", "")) if _env.get("REFLECTION_LLM_TIMEOUT_S") is not None else None
-        except (ValueError, TypeError) as e:
-            logging.warning(f"Invalid REFLECTION_LLM_TIMEOUT_S value: {e}")
-            cur_llm = None
-
-        if cur_sync is None:
-            # User request: allow unbounded reflection sync timeout by default
-            _env["REFLECTION_SYNC_TIMEOUT_S"] = "0"
-        if cur_llm is None:
-            # User request: allow unbounded LLM timeout by default
-            _env["REFLECTION_LLM_TIMEOUT_S"] = "0"
         logging.info(
-            "Reflection defaults: REQUIRED=%s, SYNC_MODE=%s, SYNC_TIMEOUT_S=%s, LLM_TIMEOUT_S=%s",
+            "Reflection mode: REQUIRED=%s, SYNC_MODE=%s (controlled by token limits and word counts)",
             _env.get("REFLECTION_REQUIRED"),
             _env.get("REFLECTION_SYNC_MODE"),
-            _env.get("REFLECTION_SYNC_TIMEOUT_S"),
-            _env.get("REFLECTION_LLM_TIMEOUT_S"),
         )
     except Exception as _def_err:
         logging.warning(f"Failed to apply reflection default settings: {_def_err}")
 
     # License validation removed - open source release
+
+    # Security validation: Check for default/insecure credentials
+    try:
+        db_url = os.getenv("DATABASE_URL", "")
+        api_key = os.getenv("SELO_SYSTEM_API_KEY", "")
+        
+        security_warnings = []
+        
+        # Check for default database credentials
+        if "seloai:password@" in db_url or ":password@" in db_url:
+            security_warnings.append(
+                "⚠️  SECURITY WARNING: Default database password detected in DATABASE_URL. "
+                "Change 'password' to a strong, unique password in backend/.env"
+            )
+        
+        # Check for default API key
+        if api_key in ("", "dev-secret-key-change-me", "change-me", "secret"):
+            security_warnings.append(
+                "⚠️  SECURITY WARNING: Default or weak API key detected. "
+                "Set a strong SELO_SYSTEM_API_KEY in backend/.env"
+            )
+        
+        # Check for empty credentials
+        if not db_url:
+            security_warnings.append(
+                "⚠️  SECURITY WARNING: DATABASE_URL is not set. "
+                "Configure database connection in backend/.env"
+            )
+        
+        # Log all security warnings
+        if security_warnings:
+            logging.warning("="*80)
+            logging.warning("SECURITY CONFIGURATION WARNINGS")
+            logging.warning("="*80)
+            for warning in security_warnings:
+                logging.warning(warning)
+            logging.warning("="*80)
+            logging.warning(
+                "These default credentials are INSECURE and should be changed before "
+                "deploying to production or exposing to networks."
+            )
+            logging.warning("="*80)
+        else:
+            logging.info("✅ Security credential validation passed")
+    except Exception as sec_err:
+        logging.error(f"Failed to validate security credentials: {sec_err}")
 
     # Initialize services
     app.state.services = await initialize_services()
@@ -1275,27 +1283,6 @@ async def lifespan(app: FastAPI):
         logging.debug(f"Model pre-warming skipped (non-critical): {warmup_err}")
     
     # License monitoring removed - open source release
-    # Startup safety check for reflection timeouts
-    try:
-        env = os.environ
-        try:
-            _llm_to = float(env.get("REFLECTION_LLM_TIMEOUT_S", "0"))
-        except Exception:
-            _llm_to = 0.0
-        try:
-            _sync_to = float(env.get("REFLECTION_SYNC_TIMEOUT_S", "0"))
-        except Exception:
-            _sync_to = 0.0
-        if _sync_to <= 0 or _llm_to <= 0:
-            logging.info("Reflection timeouts configured as unbounded (<=0). Running in strict, no-timeout mode.")
-        elif _llm_to >= _sync_to - 3.0:
-            suggested = max(5.0, _sync_to - 5.0)
-            logging.warning(
-                f"Reflection timeout configuration: REFLECTION_LLM_TIMEOUT_S={_llm_to:.1f}s is too close to REFLECTION_SYNC_TIMEOUT_S={_sync_to:.1f}s. "
-                f"Consider setting REFLECTION_LLM_TIMEOUT_S to <= {suggested:.1f}s to avoid chat sync timeouts."
-            )
-    except Exception as _to_chk_err:
-        logging.debug(f"Timeout safety check skipped: {_to_chk_err}")
     
     # Load scheduler factory
     from .scheduler.factory import SchedulerFactory
@@ -1416,7 +1403,7 @@ async def lifespan(app: FastAPI):
                             return datetime.fromtimestamp(ts)
                         if isinstance(ts, str):
                             return datetime.fromisoformat(ts.replace("Z", "+00:00"))
-                    except Exception:
+                    except (ValueError, TypeError, AttributeError):
                         return None
                     return None
                 # Determine local 'today' from TZ env or default to America/New_York
@@ -1424,7 +1411,8 @@ async def lifespan(app: FastAPI):
                 try:
                     import pytz  # type: ignore
                     tzinfo = pytz.timezone(tz_name)
-                except Exception:
+                except (ImportError, AttributeError) as e:
+                    logger.debug(f"Failed to load pytz timezone: {e}")
                     tzinfo = None
                 now_utc = utc_now()
                 if tzinfo:
@@ -1434,7 +1422,8 @@ async def lifespan(app: FastAPI):
                         import pytz  # type: ignore
                         local_now = pytz.UTC.localize(now_utc).astimezone(tzinfo)
                         today_local = local_now.date()
-                    except Exception:
+                    except (AttributeError, ValueError) as e:
+                        logger.debug(f"Failed to convert to local timezone: {e}")
                         today_local = now_utc.date()
                 last_date = None
                 if latest:
@@ -1446,7 +1435,8 @@ async def lifespan(app: FastAPI):
                                 if ts.tzinfo is None:
                                     ts = pytz.UTC.localize(ts)
                                 last_date = ts.astimezone(tzinfo).date()
-                            except Exception:
+                            except (AttributeError, ValueError) as e:
+                                logger.debug(f"Failed to convert timestamp to local date: {e}")
                                 last_date = ts.date()
                         else:
                             last_date = ts.date()
@@ -1479,15 +1469,15 @@ async def lifespan(app: FastAPI):
         try:
             catchup_task = asyncio.create_task(_catch_up_daily_reflection())
             app.state.services["catchup_task"] = catchup_task
-        except Exception:
+        except (RuntimeError, AttributeError) as e:
             # Catchup task creation is optional - continue startup if it fails
-            pass
+            logger.debug(f"Failed to create catchup task: {e}")
         # Kick off background model prewarm (non-blocking)
         try:
             prewarm_task = asyncio.create_task(_prewarm_models(app))
             app.state.services["prewarm_task"] = prewarm_task
         except Exception as _pw_err:
-            logging.info(f"Failed to schedule model prewarm: {_pw_err}")
+            logging.debug(f"Failed to schedule model prewarm (non-critical): {_pw_err}")
         # Start periodic keepalive loop
         try:
             keepalive_task = asyncio.create_task(_keepalive_prewarm_loop(app))
@@ -1509,7 +1499,7 @@ async def lifespan(app: FastAPI):
                 # Task registration is optional - task still runs even if not registered
                 pass
         except Exception as _ka_err:
-            logging.info(f"Failed to start keepalive loop: {_ka_err}")
+            logging.warning(f"Failed to start keepalive loop: {_ka_err}")
     except Exception as e:
         logging.error(f"Failed to initialize enhanced scheduler: {str(e)}")
         logging.info("Falling back to legacy reflection scheduler")
@@ -1669,7 +1659,15 @@ logging.info("GZip compression enabled for responses >= 1000 bytes")
 # Add explicit OPTIONS handler for CORS preflight requests
 @app.options("/{path:path}")
 async def options_handler(path: str):
-    """Handle CORS preflight requests with explicit headers."""
+    """
+    Handle CORS preflight requests with explicit headers.
+    
+    Args:
+        path: Request path
+        
+    Returns:
+        Response: CORS headers for preflight request
+    """
     from fastapi.responses import Response
     response = Response()
     response.headers["Access-Control-Allow-Origin"] = "*"
@@ -1679,13 +1677,23 @@ async def options_handler(path: str):
     return response
 
 # Add rate limiting middleware
-app.add_middleware(RateLimitMiddleware, requests_per_minute=120, burst_size=20)
+app.add_middleware(RateLimitMiddleware, requests_per_minute=RATE_LIMIT_REQUESTS_PER_MINUTE, burst_size=RATE_LIMIT_BURST_SIZE)
 
 # License middleware removed - open source release
 
 # Add security headers middleware
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
+    """
+    Add security headers to all HTTP responses.
+    
+    Headers added:
+    - X-Content-Type-Options: nosniff
+    - X-Frame-Options: DENY
+    - X-XSS-Protection: 1; mode=block
+    - Strict-Transport-Security: max-age=31536000
+    - Referrer-Policy: strict-origin-when-cross-origin
+    """
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
@@ -1699,9 +1707,14 @@ async def add_security_headers(request: Request, call_next):
 
 # License status endpoint removed - open source release
 
-# Root endpoint for basic liveness
 @app.get("/")
 async def root():
+    """
+    Root endpoint for basic liveness check.
+    
+    Returns:
+        dict: Status indicating the API is running
+    """
     return {"status": "ok"}
 
 # Runtime frontend configuration endpoint
@@ -1987,7 +2000,7 @@ class ChatResponse(BaseModel):
     history: List[Dict[str, Any]]
     turn_id: str
 
-async def _build_persona_system_prompt(services, session_id: str = None, persona=None, persona_name: str = None) -> str:
+async def _build_persona_system_prompt(services: Dict[str, Any], session_id: Optional[str] = None, persona: Optional[Any] = None, persona_name: Optional[str] = None) -> str:
     """Build system prompt from persona data for the given session.
     
     Args:
@@ -2132,7 +2145,7 @@ async def _build_persona_system_prompt(services, session_id: str = None, persona
         logger.error(f"Error building persona system prompt: {e}", exc_info=True)
         return await _get_fallback_system_prompt(services, session_id)
 
-async def _get_fallback_system_prompt(services, session_id: str = None, persona_name: str = None) -> str:
+async def _get_fallback_system_prompt(services: Dict[str, Any], session_id: Optional[str] = None, persona_name: Optional[str] = None) -> str:
     """Fallback system prompt when persona is unavailable.
     
     Args:
@@ -2177,7 +2190,7 @@ Capabilities: You can search the web and access memories. Search results appear 
 Length discipline: Keep each reply under ~2,800 characters (about 700 tokens) unless deeper detail is essential.
 """
 
-def format_messages_for_ollama(messages: List[Dict[str, str]], system_prompt: str = None, persona_name: str = None) -> str:
+def format_messages_for_ollama(messages: List[Dict[str, str]], system_prompt: Optional[str] = None, persona_name: Optional[str] = None) -> str:
     """Format messages for Ollama CLI input with persona-aware system prompt."""
     # Note: This function is synchronous so cannot fetch persona name async
     # Caller should pass persona_name if available
@@ -2208,7 +2221,7 @@ def format_messages_for_ollama(messages: List[Dict[str, str]], system_prompt: st
         return system_prompt
 
 
-async def _derive_adaptive_chat_params(services) -> Dict[str, Any]:
+async def _derive_adaptive_chat_params(services: Dict[str, Any]) -> Dict[str, Any]:
     """Derive chat generation parameters adaptively from persona traits.
     Baseline values come from environment variables; adjustments are bounded and optional.
     Returns a dict with keys: max_tokens (int), temperature (float).
@@ -2462,8 +2475,8 @@ class ChatResponse(BaseModel):
     note: Optional[str] = None
 
 
-@app.post("/chat")
-async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, request: Request):
+@app.post("/chat", response_model=ChatResponse)
+async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, request: Request) -> ChatResponse:
     session_id = chat_request.session_id
     
     # Detect whether this turn should trigger system diagnostics
@@ -2528,6 +2541,177 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
         role="user",
         content=chat_request.prompt
     )
+
+    try:
+        from .db.repositories.relationship import RelationshipRepository
+        from .db.repositories.relationship_memory import RelationshipMemoryRepository
+        import re
+
+        relationship_repo = RelationshipRepository()
+        event_repo = RelationshipMemoryRepository()
+
+        if persona and getattr(persona, "id", None):
+            raw_text = (chat_request.prompt or "").strip()
+            lowered = raw_text.lower()
+            now = datetime.now(timezone.utc)
+
+            # 1) Outcome capture: if user appears to be reporting what happened, close one pending event.
+            try:
+                pending_events = await event_repo.get_pending_events(persona_id=persona.id)
+            except Exception:
+                pending_events = []
+
+            future_markers = ("tomorrow", "next ", "upcoming", "will ", "going to", "gonna", "later")
+            past_markers = ("went", "was", "were", "did", "happened", "ended", "finished", "passed", "failed", "got", "rejected", "accepted")
+            looks_future = any(m in lowered for m in future_markers)
+            looks_past = any(m in lowered for m in past_markers)
+
+            if pending_events and looks_past and not looks_future:
+                evt = pending_events[0]
+                evt_id = getattr(evt, "id", None)
+                if evt_id:
+                    outcome_text = raw_text
+                    if len(outcome_text) > 240:
+                        outcome_text = outcome_text[:240].rsplit(" ", 1)[0]
+                    try:
+                        await event_repo.mark_event_followed_up(str(evt_id), outcome=outcome_text)
+                    except Exception as _mark_err:
+                        pass
+
+                    tone = "mixed"
+                    positive = ("great", "good", "well", "awesome", "amazing", "passed", "got the job", "accepted")
+                    negative = ("bad", "terrible", "awful", "failed", "rejected", "didn't get", "didnt get")
+                    if any(p in lowered for p in positive):
+                        tone = "positive"
+                    elif any(n in lowered for n in negative):
+                        tone = "negative"
+                    try:
+                        await event_repo.create_memory(
+                            persona_id=persona.id,
+                            memory_type="celebration" if tone == "positive" else ("disappointment" if tone == "negative" else "shared_moment"),
+                            narrative="They told me how it went. I want to hold onto this moment and meet it with honesty.",
+                            emotional_significance=0.75,
+                            user_perspective=outcome_text,
+                            conversation_id=str(conversation.id) if conversation else None,
+                            tags=["event_outcome"],
+                            emotional_tone=tone,
+                        )
+                    except Exception:
+                        pass
+
+            # 2) Inside joke / shared language capture (reuse relationship_state.inside_jokes)
+            joke_phrase = None
+            try:
+                m = re.search(r"\b(?:let'?s|lets)\s+call\s+(?:it|this)\s+\"?([A-Za-z0-9][A-Za-z0-9 _\-]{1,40})\"?", raw_text, flags=re.IGNORECASE)
+                if not m:
+                    m = re.search(r"\b(?:from\s+now\s+on|our\s+code\s+word\s+is|our\s+keyword\s+is|our\s+inside\s+joke\s+is)\s+\"?([A-Za-z0-9][A-Za-z0-9 _\-]{1,40})\"?", raw_text, flags=re.IGNORECASE)
+                if m:
+                    joke_phrase = (m.group(1) or "").strip()
+            except Exception:
+                joke_phrase = None
+
+            if joke_phrase:
+                try:
+                    state = await relationship_repo.get_or_create_state(persona.id)
+                    jokes = getattr(state, "inside_jokes", None)
+                    if not isinstance(jokes, list):
+                        jokes = []
+                    normalized = joke_phrase.lower().strip()
+                    existing = {str((j or {}).get("phrase", "")).lower().strip() for j in jokes if isinstance(j, dict)}
+                    if normalized and normalized not in existing:
+                        jokes.append({
+                            "phrase": joke_phrase,
+                            "origin": raw_text[:160],
+                            "created_at": now.isoformat(),
+                        })
+                        await relationship_repo.update_state(persona.id, {"inside_jokes": jokes})
+                        await relationship_repo.record_milestone(persona.id, "inside_joke")
+                        try:
+                            await event_repo.create_memory(
+                                persona_id=persona.id,
+                                memory_type="inside_joke",
+                                narrative=f"We established a shared phrase: '{joke_phrase}'.",
+                                emotional_significance=0.65,
+                                user_perspective=raw_text[:200],
+                                conversation_id=str(conversation.id) if conversation else None,
+                                tags=["inside_joke", "shared_language"],
+                                emotional_tone="positive",
+                            )
+                        except Exception:
+                            pass
+                except Exception as _joke_err:
+                    pass
+
+            # 3) Improved anticipated event parsing + de-duplication
+            event_keywords = [
+                "interview", "presentation", "meeting", "appointment", "exam", "deadline",
+                "trip", "flight", "surgery", "party", "date",
+            ]
+            matched_keyword = next((k for k in event_keywords if k in lowered), None)
+            if matched_keyword:
+                anticipated_date = None
+
+                # Recognize additional time phrases and explicit dates.
+                time_phrases = {
+                    "today": 0,
+                    "tomorrow": 1,
+                    "tonight": 0,
+                    "next week": 7,
+                    "next month": 30,
+                    "this weekend": 5,
+                }
+                for phrase, days in time_phrases.items():
+                    if phrase in lowered:
+                        anticipated_date = now + timedelta(days=days)
+                        break
+
+                if anticipated_date is None:
+                    m = re.search(r"\b(\d{4})-(\d{2})-(\d{2})\b", lowered)
+                    if m:
+                        try:
+                            anticipated_date = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)), tzinfo=timezone.utc)
+                        except Exception:
+                            anticipated_date = None
+
+                if anticipated_date is None:
+                    m = re.search(r"\b(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?\b", lowered)
+                    if m:
+                        try:
+                            month = int(m.group(1))
+                            day = int(m.group(2))
+                            year_raw = m.group(3)
+                            year = int(year_raw) if year_raw else now.year
+                            if year < 100:
+                                year += 2000
+                            anticipated_date = datetime(year, month, day, tzinfo=timezone.utc)
+                        except Exception:
+                            anticipated_date = None
+
+                # Gate: only create events if the user seems to be referring to a future/present moment.
+                if anticipated_date is not None or any(x in lowered for x in ("tomorrow", "next ", "on ", "this weekend", "today", "tonight")):
+                    snippet = raw_text
+                    if len(snippet) > 140:
+                        snippet = snippet[:140].rsplit(" ", 1)[0]
+                    event_description = f"They mentioned an upcoming {matched_keyword}: {snippet}"
+
+                    try:
+                        pending = await event_repo.get_pending_events(persona_id=persona.id)
+                    except Exception:
+                        pending = []
+                    normalized_desc = event_description.lower().strip()
+                    already = any((getattr(e, "event_description", "") or "").lower().strip() == normalized_desc for e in (pending or []))
+
+                    if not already:
+                        await event_repo.create_anticipated_event(
+                            persona_id=persona.id,
+                            event_description=event_description,
+                            anticipated_date=anticipated_date,
+                            event_type=matched_keyword,
+                            importance=0.7,
+                            conversation_id=str(conversation.id) if conversation else None,
+                        )
+    except Exception as evt_err:
+        logger.debug(f"Anticipated event extraction failed (non-critical): {evt_err}")
     
     # OPTIMIZATION: Fetch conversation history once (limit=100) and reuse for multiple purposes
     # This avoids redundant database queries
@@ -3554,6 +3738,65 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
 
         # Reflection already generated first with turn_id; no post-answer reflection
         
+        # Week 1 + Week 2: Update relationship state and create memories (single-user optimization)
+        try:
+            from .db.repositories.relationship import RelationshipRepository
+            from .db.repositories.relationship_memory import RelationshipMemoryRepository
+            
+            relationship_repo = RelationshipRepository()
+            memory_repo = RelationshipMemoryRepository()
+            
+            if persona and hasattr(persona, 'id'):
+                # Increment conversation count
+                await relationship_repo.increment_conversation_count(persona.id)
+                
+                # Update intimacy based on conversation depth indicators
+                # Simple heuristics for Week 1 - will be enhanced in later phases
+                message_length = len(chat_request.prompt or "")
+                
+                # Detect depth indicators
+                depth_keywords = ["feel", "think", "believe", "worry", "hope", "afraid", "excited", "concerned"]
+                has_depth = any(keyword in (chat_request.prompt or "").lower() for keyword in depth_keywords)
+                
+                intimacy_change = 0.0
+                memory_created = False
+                
+                if has_depth and message_length > 100:
+                    # User shared something meaningful
+                    intimacy_change = 0.01
+                    await relationship_repo.update_intimacy(persona.id, intimacy_change, "meaningful_conversation")
+                    await relationship_repo.record_milestone(persona.id, "deep_conversation")
+                    
+                    # Week 2: Create relationship memory for significant moment
+                    try:
+                        await memory_repo.create_memory(
+                            persona_id=persona.id,
+                            memory_type="shared_moment",
+                            narrative=f"They shared something meaningful with me. The conversation felt deeper than usual.",
+                            emotional_significance=0.7,
+                            intimacy_delta=intimacy_change,
+                            user_perspective=chat_request.prompt[:200] if chat_request.prompt else None,
+                            conversation_id=str(conversation.id) if conversation else None,
+                            tags=["deep_conversation", "meaningful"],
+                            emotional_tone="positive"
+                        )
+                        memory_created = True
+                    except Exception as mem_err:
+                        logger.debug(f"Relationship memory creation failed (non-critical): {mem_err}")
+                        
+                elif message_length > 200:
+                    # Longer message suggests engagement
+                    intimacy_change = 0.005
+                    await relationship_repo.update_intimacy(persona.id, intimacy_change, "engaged_conversation")
+                
+                # Update trust based on consistency
+                if conversation_history and len(conversation_history) > 5:
+                    await relationship_repo.update_trust(persona.id, 0.002, "continued_interaction")
+                
+                logger.debug(f"Updated relationship state for persona {persona.id} (memory_created={memory_created})")
+        except Exception as rel_err:
+            logger.debug(f"Relationship state update failed (non-critical): {rel_err}")
+        
         # Check for conversation milestone episode trigger (async, non-blocking)
         episode_trigger_manager = app.state.services.get("episode_trigger_manager")
         if episode_trigger_manager:
@@ -4227,7 +4470,7 @@ app.include_router(meta_router.router, prefix="/api")
 from .core.health_monitor import get_system_health, get_system_metrics
 from .core.graceful_degradation import get_degradation_status
 from .core.circuit_breaker import circuit_manager
-from .core.faiss_validator import faiss_validator, validate_faiss, auto_fix_faiss
+from .core.faiss_validator import validate_faiss, auto_fix_faiss
 
 @app.get("/health/simple")
 async def simple_health_check():

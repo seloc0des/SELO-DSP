@@ -20,7 +20,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 
 from ..models.user import User
-from ..session import AsyncSessionLocal, get_session
+from ..session import get_session
 
 logger = logging.getLogger(__name__)
 

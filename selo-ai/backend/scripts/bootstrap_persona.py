@@ -8,7 +8,6 @@ Runs the PersonaBootstrapper to generate an initial self-authored persona
 Usage:
     python -m scripts.bootstrap_persona [--verbose] [--mock]
 """
-import asyncio
 import argparse
 import logging
 import sys

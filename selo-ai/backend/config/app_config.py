@@ -6,7 +6,7 @@ database, LLM, security, and system-wide settings.
 """
 
 import os
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 import logging
 from pathlib import Path
 

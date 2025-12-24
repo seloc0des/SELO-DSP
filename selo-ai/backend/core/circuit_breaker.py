@@ -8,7 +8,7 @@ Automatically recovers when components become healthy again.
 import asyncio
 import logging
 import time
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict
 from enum import Enum
 from dataclasses import dataclass
 from functools import wraps
@@ -33,7 +33,6 @@ class CircuitBreakerConfig:
 
 class CircuitBreakerError(Exception):
     """Raised when circuit breaker is open."""
-    pass
 
 class CircuitBreaker:
     """

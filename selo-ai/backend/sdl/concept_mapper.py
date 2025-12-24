@@ -6,13 +6,12 @@ into a knowledge graph, identifying relationships between concepts,
 and maintaining the conceptual structure of the AI's knowledge.
 """
 
-import asyncio
 import json
 import logging
-from typing import Dict, Any, List, Optional, Set, Tuple
+from typing import Dict, Any, List, Optional, Tuple
 
 from ..llm.router import LLMRouter
-from .learning_models import Learning, Concept, Connection
+from .learning_models import Learning
 
 logger = logging.getLogger("selo.sdl.concept_mapper")
 

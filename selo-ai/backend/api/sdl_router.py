@@ -6,7 +6,6 @@ learning management, concept exploration, and knowledge search.
 """
 
 import logging
-from datetime import datetime
 from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field

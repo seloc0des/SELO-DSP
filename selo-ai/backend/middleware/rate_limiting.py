@@ -7,7 +7,7 @@ fair usage across different endpoints.
 
 import time
 import asyncio
-from typing import Dict, Tuple
+from typing import Dict
 from fastapi import Request, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response

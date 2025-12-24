@@ -10,10 +10,8 @@ import asyncio
 from typing import Dict, Any, Optional, Callable
 from datetime import timedelta
 
-from .scheduler_service import SchedulerService
 from ..utils.datetime import utc_now
 import time
-import os
 import psutil
 
 logger = logging.getLogger("selo.scheduler.resources")

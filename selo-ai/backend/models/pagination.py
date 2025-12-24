@@ -6,7 +6,7 @@ to improve performance and prevent large payload issues.
 """
 
 from pydantic import BaseModel, Field, field_validator
-from typing import Generic, TypeVar, List, Optional, Any
+from typing import Generic, TypeVar, List, Optional
 from math import ceil
 
 T = TypeVar('T')
@@ -94,7 +94,6 @@ class SortParams(BaseModel):
 
 class FilterParams(BaseModel):
     """Base class for filter parameters."""
-    pass
 
 def paginate_query_result(items: List[T], params: PaginationParams, total_count: int) -> PaginatedResponse[T]:
     """

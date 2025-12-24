@@ -7,14 +7,13 @@ including persona core attributes, persona evolution history, and trait models.
 
 from datetime import datetime, timezone
 import uuid
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 
 from sqlalchemy import (
     Column, String, Integer, Float, Boolean, 
     DateTime, ForeignKey, JSON, Text, Table
 )
 from sqlalchemy.orm import relationship
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..base import Base
 

@@ -8,7 +8,6 @@ for LLM inference across SELO's subsystems.
 import logging
 import json
 from typing import Dict, List, Optional, Any
-import os
 import pathlib
 
 logger = logging.getLogger("selo.prompt")

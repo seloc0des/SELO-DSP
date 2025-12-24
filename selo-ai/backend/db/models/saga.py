@@ -7,9 +7,8 @@ compensating transactions to ensure eventual consistency.
 
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
 
-from sqlalchemy import Column, String, DateTime, JSON, Integer, Text, Enum as SQLEnum, ForeignKey
+from sqlalchemy import Column, String, DateTime, JSON, Integer, Enum as SQLEnum, ForeignKey
 from sqlalchemy.orm import relationship
 import enum
 

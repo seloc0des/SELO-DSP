@@ -7,14 +7,13 @@ This module provides database operations for SDL models using SQLAlchemy.
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional
 
-from sqlalchemy import select, update, delete, and_, or_, desc
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, and_, or_, desc
 from sqlalchemy.orm import selectinload
 
 from ..db.session import get_session
-from .learning_models import Learning, Concept, Connection, LearningConcept
+from .learning_models import Learning, Concept, Connection
 
 logger = logging.getLogger("selo.sdl.repository")
 

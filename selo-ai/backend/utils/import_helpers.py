@@ -12,8 +12,7 @@ multiple execution contexts:
 The try/except ImportError pattern is INTENTIONAL and should not be removed.
 """
 
-from typing import Any, Callable, TypeVar
-import sys
+from typing import Any, TypeVar
 import logging
 
 logger = logging.getLogger(__name__)

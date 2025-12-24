@@ -9,7 +9,6 @@ import asyncio
 import logging
 from typing import Dict, List, Callable, Any
 from datetime import datetime, timezone
-from collections import defaultdict
 
 logger = logging.getLogger("selo.utils.batch_tracker")
 

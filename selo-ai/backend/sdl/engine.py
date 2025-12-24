@@ -5,18 +5,17 @@ This is the core component that processes reflections and interactions
 to generate learnings and update the AI's knowledge base.
 """
 
-import asyncio
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional, Union, Set, Tuple
+from typing import Dict, Any, List, Optional
 
 from ..llm.router import LLMRouter
 from ..memory.vector_store import VectorStore
 from .repository import LearningRepository
 from ..db.repositories.reflection import ReflectionRepository
 from .concept_mapper import ConceptMapper
-from .learning_models import Learning, Concept, Connection
+from .learning_models import Learning
 
 logger = logging.getLogger("selo.sdl.engine")
 

@@ -7,9 +7,8 @@ Ensures system remains partially functional even during component failures.
 
 import asyncio
 import logging
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional
 from functools import wraps
-import json
 
 from ..utils.datetime import utc_now, isoformat_utc_now
 

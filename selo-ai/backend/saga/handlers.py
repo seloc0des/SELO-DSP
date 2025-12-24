@@ -688,7 +688,6 @@ class EpisodeGenerationHandlers:
     
     async def compensate_gather_episode_context(self, compensation_data: Dict[str, Any]):
         """Compensation: No action needed for read-only operation."""
-        pass
     
     async def generate_episode_narrative_step(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -761,7 +760,6 @@ class EpisodeGenerationHandlers:
     
     async def compensate_generate_episode_narrative(self, compensation_data: Dict[str, Any]):
         """Compensation: No action needed for LLM generation."""
-        pass
     
     async def persist_episode_step(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """

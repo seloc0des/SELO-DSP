@@ -18,7 +18,6 @@ from ..scheduler.event_triggers import EventTriggerSystem
 from ..persona.integration import PersonaIntegration
 from ..sdl.integration import SDLIntegration
 from ..scheduler.scheduler_service import SchedulerService
-from ..scheduler.adaptive_scheduler import AdaptiveScheduler
 
 # ReflectionService does not exist; the concrete implementation is ReflectionProcessor
 from ..reflection.processor import ReflectionProcessor

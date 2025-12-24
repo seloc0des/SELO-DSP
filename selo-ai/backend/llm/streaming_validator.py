@@ -6,7 +6,6 @@ identity constraints on accumulated content.
 """
 
 import logging
-import re
 from typing import AsyncGenerator, Dict, Any, Optional
 from .response_validator import ResponseValidator
 

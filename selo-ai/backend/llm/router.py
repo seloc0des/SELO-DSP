@@ -3,11 +3,9 @@
 Provides dynamic LLM routing and logging for SELO AI subsystems.
 """
 import logging
-import json
 import os
-from typing import Optional, Literal, Dict, Any, Union
+from typing import Literal, Dict, Any
 import inspect
-import pathlib
 
 from .controller import LLMController
 from .response_validator import ResponseValidator

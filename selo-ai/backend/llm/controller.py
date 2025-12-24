@@ -7,8 +7,6 @@ including model selection, inference, and response handling.
 
 import logging
 import time
-import json
-import subprocess
 from typing import Dict, List, Optional, Any, Union, AsyncGenerator, TYPE_CHECKING
 import os
 import httpx
@@ -16,7 +14,7 @@ import asyncio
 
 # Import performance optimization modules
 try:
-    from ..core.response_cache import get_response_cache, ResponseCache
+    from ..core.response_cache import get_response_cache
     from ..core.streaming_llm import get_streaming_controller, StreamChunk
     PERFORMANCE_OPTIMIZATIONS_AVAILABLE = True
 except ImportError:
@@ -50,6 +48,18 @@ except ImportError:
 
 logger = logging.getLogger("selo.llm")
 
+# LLM Configuration Constants
+DEFAULT_REQUEST_TIMEOUT = 120  # seconds
+DEFAULT_MAX_TOKENS = 1024
+DEFAULT_TEMPERATURE = 0.7
+DEFAULT_TOP_K = 40
+DEFAULT_TOP_P = 0.9
+DEFAULT_NUM_CTX = 8192  # qwen2.5:3b native capacity
+MODEL_CACHE_TTL = 300  # 5 minutes
+TIMEOUT_GRACE_SECONDS = 10
+EMBEDDING_DIMENSION = 384
+EMBEDDING_NORMALIZATION_FACTOR = 1e10
+
 class LLMController:
     """
     Controller for language model interactions.
@@ -72,15 +82,15 @@ class LLMController:
         self.enable_streaming = self.config.get("enable_streaming", True)
         # Prefer env-driven timeout for consistency with .env (LLM_TIMEOUT)
         try:
-            _req_to = int(os.getenv("LLM_TIMEOUT", str(self.config.get("request_timeout", 120))))
-        except Exception:
-            _req_to = self.config.get("request_timeout", 120)
+            _req_to = int(os.getenv("LLM_TIMEOUT", str(self.config.get("request_timeout", DEFAULT_REQUEST_TIMEOUT))))
+        except (ValueError, TypeError) as e:
+            logger.debug(f"Failed to parse LLM_TIMEOUT: {e}")
+            _req_to = self.config.get("request_timeout", DEFAULT_REQUEST_TIMEOUT)
         # Support unbounded timeouts when configured <= 0
         self._timeout_unbounded = (_req_to is not None and int(_req_to) <= 0)
         self.request_timeout = None if self._timeout_unbounded else int(_req_to)
         # Add a small grace window so borderline generations don't trip a hard timeout
-        # This protects against slight model overrun vs timeout value (e.g., 120.04s vs 120s)
-        self._timeout_grace_seconds = 10
+        self._timeout_grace_seconds = TIMEOUT_GRACE_SECONDS
         
         # Initialize circuit breaker for this controller (if available)
         if RESILIENCE_AVAILABLE:
@@ -101,19 +111,19 @@ class LLMController:
         
         # Cache for model availability checks
         self._model_cache = {}
-        self._cache_ttl = 300  # 5 minutes
+        self._cache_ttl = MODEL_CACHE_TTL
         self._tags_cache: Dict[str, Any] = {"timestamp": 0.0, "models": []}
         try:
             self._tags_cache_ttl = max(5.0, float(os.getenv("OLLAMA_TAG_CACHE_TTL", "30")))
-        except Exception:
+        except (ValueError, TypeError):
             self._tags_cache_ttl = 30.0
         
     @get_llm_breaker()
     async def complete(self, 
                 prompt: str, 
                 model: Optional[str] = None, 
-                max_tokens: int = 1024,
-                temperature: float = 0.7,
+                max_tokens: int = DEFAULT_MAX_TOKENS,
+                temperature: float = DEFAULT_TEMPERATURE,
                 request_stream: bool = False,
                 **kwargs) -> Dict[str, Any]:
         """
@@ -229,8 +239,8 @@ class LLMController:
     async def _ollama_completion(self, 
                          prompt: str, 
                          model_name: str, 
-                         max_tokens: int = 1024,
-                         temperature: float = 0.7,
+                         max_tokens: int = DEFAULT_MAX_TOKENS,
+                         temperature: float = DEFAULT_TEMPERATURE,
                          request_stream: bool = False,
                          **kwargs) -> Union[Dict[str, Any], AsyncGenerator[StreamChunk, None]]:
         """
@@ -268,13 +278,13 @@ class LLMController:
             def strip_ansi(s: str) -> str:
                 try:
                     return ansi_re.sub("", s or "")
-                except Exception:
+                except (AttributeError, TypeError):
                     return s or ""
 
             def is_humanish_tag(name: str) -> bool:
                 try:
                     return str(name).startswith("humanish-llama3:")
-                except Exception:
+                except (AttributeError, TypeError):
                     return False
 
             def ensure_humanish_alias_and_tag(tagged_name: str) -> bool:
@@ -300,12 +310,12 @@ class LLMController:
             def _env_float(name: str, default: float) -> float:
                 try:
                     return float(os.getenv(name, str(default)))
-                except Exception:
+                except (ValueError, TypeError):
                     return default
             def _env_int(name: str, default: int) -> int:
                 try:
                     return int(float(os.getenv(name, str(default))))
-                except Exception:
+                except (ValueError, TypeError):
                     return default
             def _env_opt_int(name: str) -> Optional[int]:
                 try:
@@ -313,7 +323,7 @@ class LLMController:
                     if val is None or str(val).strip() == "":
                         return None
                     return int(float(val))
-                except Exception:
+                except (ValueError, TypeError):
                     return None
             # Respect caller-provided max_tokens strictly for num_predict.
             # If <=0 or None, allow unbounded generation via -1.
@@ -321,9 +331,9 @@ class LLMController:
                 num_predict = -1
             else:
                 num_predict = max(1, int(max_tokens))
-            top_k = _env_int("CHAT_TOP_K", 40)
-            top_p = _env_float("CHAT_TOP_P", 0.9)
-            num_ctx = _env_int("CHAT_NUM_CTX", 8192)  # qwen2.5:3b native capacity
+            top_k = _env_int("CHAT_TOP_K", DEFAULT_TOP_K)
+            top_p = _env_float("CHAT_TOP_P", DEFAULT_TOP_P)
+            num_ctx = _env_int("CHAT_NUM_CTX", DEFAULT_NUM_CTX)
             temp_eff = _env_float("CHAT_TEMPERATURE", temperature)
 
             try:
@@ -447,7 +457,7 @@ class LLMController:
             use_path = False
             try:
                 use_path = (os.path.isabs(model_name) and model_name.endswith('.gguf') and os.path.exists(model_name))
-            except Exception:
+            except (OSError, AttributeError, TypeError):
                 use_path = False
 
             if use_path:
@@ -477,8 +487,8 @@ class LLMController:
                 except asyncio.TimeoutError:
                     try:
                         process.kill()
-                    except Exception:
-                        pass
+                    except (ProcessLookupError, PermissionError) as e:
+                        logger.debug(f"Failed to kill process: {e}")
                     logger.warning(
                         "Ollama subprocess generation timed out after %.2fs (configured=%ss + grace=%ss)",
                         (self.request_timeout + self._timeout_grace_seconds),
@@ -602,29 +612,29 @@ class LLMController:
                 except Exception as http_err:
                     logger.debug(f"Ollama embeddings HTTP error: {http_err}")
 
-            # Fallback: deterministic 384-dim hash embedding
+            # Fallback: deterministic hash embedding
             import hashlib, struct
             hb = hashlib.sha512(text.encode("utf-8")).digest()
             out: List[float] = []
-            for i in range(0, min(len(hb), 384 * 4), 4):
+            for i in range(0, min(len(hb), EMBEDDING_DIMENSION * 4), 4):
                 chunk = hb[i:i+4]
                 if len(chunk) < 4:
                     chunk = chunk + b"\x00" * (4 - len(chunk))
                 try:
                     val = struct.unpack('f', chunk)[0]
-                except Exception:
+                except (struct.error, ValueError):
                     val = 0.0
-                out.append(max(-1.0, min(1.0, val / 1e10)))
-            while len(out) < 384:
-                out.extend(out[:min(len(out), 384 - len(out))])
-            return out[:384]
+                out.append(max(-1.0, min(1.0, val / EMBEDDING_NORMALIZATION_FACTOR)))
+            while len(out) < EMBEDDING_DIMENSION:
+                out.extend(out[:min(len(out), EMBEDDING_DIMENSION - len(out))])
+            return out[:EMBEDDING_DIMENSION]
 
         except Exception as e:
             logger.error(f"Error generating embedding: {str(e)}", exc_info=True)
             # Deterministic fallback on unexpected error
             import hashlib
             h = hashlib.md5((text or "").encode("utf-8")).hexdigest()
-            return [float(int(h[i % len(h)], 16)) / 15.0 - 0.5 for i in range(384)]
+            return [float(int(h[i % len(h)], 16)) / 15.0 - 0.5 for i in range(EMBEDDING_DIMENSION)]
 
     async def _validate_model_availability(self, model_name: str, provider: str = "ollama") -> bool:
         """
@@ -705,7 +715,7 @@ class LLMController:
                                  prompt: str, 
                                  model: Optional[str] = None,
                                  system_prompt: Optional[str] = None,
-                                 temperature: float = 0.7,
+                                 temperature: float = DEFAULT_TEMPERATURE,
                                  max_tokens: Optional[int] = None,
                                  use_cache: bool = True) -> str:
         """
@@ -757,7 +767,7 @@ class LLMController:
                              prompt: str,
                              model: Optional[str] = None,
                              system_prompt: Optional[str] = None,
-                             temperature: float = 0.7,
+                             temperature: float = DEFAULT_TEMPERATURE,
                              max_tokens: Optional[int] = None) -> AsyncGenerator[StreamChunk, None]:
         """
         Stream completion tokens for real-time response generation.

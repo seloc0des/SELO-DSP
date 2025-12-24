@@ -5,13 +5,11 @@ This module implements the repository pattern for reflection persistence.
 It handles CRUD operations for reflections in the database.
 """
 
-from typing import Dict, List, Optional, Any, Union
-import json
+from typing import Dict, List, Optional, Any
 import logging
 from datetime import datetime, timedelta, timezone
 import uuid
-from sqlalchemy import select, update, delete, and_, desc, asc
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, and_, desc
 from sqlalchemy.sql import func
 
 from ..models.reflection import Reflection, ReflectionMemory, RelationshipQuestionQueue

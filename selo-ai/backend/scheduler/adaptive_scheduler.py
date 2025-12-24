@@ -6,10 +6,8 @@ based on system usage patterns, event importance, and resource availability.
 """
 
 import logging
-import asyncio
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
-import time
 import statistics
 
 from .scheduler_service import SchedulerService

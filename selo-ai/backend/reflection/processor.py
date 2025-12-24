@@ -11,7 +11,7 @@ import json
 import os
 import uuid
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Any, Union, Deque, Sequence, TYPE_CHECKING
+from typing import Dict, List, Optional, Any, Deque, Sequence, TYPE_CHECKING
 import logging
 import asyncio
 import inspect
@@ -138,8 +138,9 @@ class ReflectionProcessor:
                     'min': getattr(cfg, 'word_count_min', 90),
                     'max': getattr(cfg, 'word_count_max', 180)
                 }
-            except Exception:
+            except (ImportError, AttributeError, KeyError) as e:
                 # Fallback to our standard range if config can't be loaded
+                logger.debug(f"Failed to load reflection config: {e}")
                 cls._word_count_config = {'min': 90, 'max': 180}
         return cls._word_count_config
     
@@ -158,8 +159,8 @@ class ReflectionProcessor:
             max_tokens_cfg = int(os.environ.get("REFLECTION_MAX_TOKENS", "0"))
             if max_tokens_cfg > 0:
                 return max_tokens_cfg
-        except Exception:
-            pass
+        except (ValueError, TypeError) as e:
+            logger.debug(f"Failed to parse REFLECTION_MAX_TOKENS: {e}")
         
         # Use tier-aware fallback from system profile
         try:
@@ -186,11 +187,11 @@ class ReflectionProcessor:
             import os
             try:
                 msg_min = int(os.getenv("REFLECTION_MESSAGE_WORD_MIN", "80"))
-            except Exception:
+            except (ValueError, TypeError):
                 msg_min = 80
             try:
                 msg_max = int(os.getenv("REFLECTION_MESSAGE_WORD_MAX", "320"))
-            except Exception:
+            except (ValueError, TypeError):
                 msg_max = 320
 
             # Sanity-check overrides; fall back to base config on invalid values
@@ -370,8 +371,8 @@ class ReflectionProcessor:
                 pattern = getattr(self, "_non_english_pattern", None)
                 if pattern and pattern.search(value):
                     return await self._translate_text_to_english(value, source_model=source_model)
-            except Exception:
-                logger.debug("Translation helper failed; keeping original text.", exc_info=True)
+            except (AttributeError, TypeError, ImportError) as e:
+                logger.debug(f"Translation helper failed; keeping original text: {e}", exc_info=True)
             return value
 
         # Primary narrative content
@@ -507,10 +508,10 @@ class ReflectionProcessor:
                     "emotional_state": out.get("emotional_state", out.get("emotional_state")),
                 }
             )
-        except Exception:
+        except (KeyError, AttributeError, TypeError) as e:
             # Schema repair is best-effort; if propagation fails, fall back to
             # the original object without raising.
-            pass
+            logger.debug(f"Schema repair propagation failed: {e}")
 
         return reflection_obj
 
@@ -1052,7 +1053,7 @@ class ReflectionProcessor:
 
             try:
                 created_dt = created_dt.astimezone(timezone.utc)
-            except Exception:
+            except (AttributeError, ValueError):
                 created_dt = created_dt.replace(tzinfo=timezone.utc)
 
             return created_dt >= recent_cutoff
@@ -1413,7 +1414,7 @@ class ReflectionProcessor:
                         traits_dict = persona.traits if isinstance(persona.traits, dict) else {}
                         trait_strs = [f"{k}={v:.2f}" for k, v in traits_dict.items()][:5]
                         persona_traits = ", ".join(trait_strs)
-                except Exception:
+                except (AttributeError, KeyError, TypeError):
                     pass
             
             # Build classifier prompt
@@ -1550,8 +1551,8 @@ Your decision:"""
                 persona = await self.persona_repo.get_or_create_default_persona(user_id=user.id)
                 if persona and hasattr(persona, "name") and persona.name and persona.name.strip():
                     persona_name = persona.name.strip()
-        except Exception:
-            pass
+        except (AttributeError, ImportError) as e:
+            logger.debug(f"Failed to get persona name: {e}")
         
         try:
             # Step 1: Gather context for reflection
@@ -1577,9 +1578,9 @@ Your decision:"""
                             try:
                                 if isinstance(context[k], dict) and isinstance(v, dict):
                                     context[k].update({kk: vv for kk, vv in v.items() if kk not in context[k]})
-                            except Exception:
+                            except (KeyError, AttributeError, TypeError):
                                 pass
-            except Exception:
+            except (KeyError, AttributeError, TypeError):
                 pass
             
             # Log context stats
@@ -1607,7 +1608,7 @@ Your decision:"""
                             and self.prompt_builder.get_template("reflection_message")
                         ):
                             preferred_template = "reflection_message"
-                except Exception:
+                except (AttributeError, KeyError, ImportError):
                     preferred_template = None
 
                 template_name = preferred_template or f"reflection_{reflection_type}"
@@ -1615,7 +1616,7 @@ Your decision:"""
                 persona_name = ""
                 try:
                     persona_name = (context.get("persona", {}) or {}).get("name", "")
-                except Exception:
+                except (AttributeError, KeyError, TypeError):
                     pass
 
                 # Paragraph guidance: keep inner/message reflections slightly tighter
@@ -1648,7 +1649,7 @@ Your decision:"""
 
             try:
                 style = (os.environ.get("REFLECTION_OUTPUT_STYLE", "verbose") or "verbose").strip().lower()
-            except Exception:
+            except (ValueError, TypeError, AttributeError):
                 style = "verbose"
 
             style_note = ""
@@ -1718,7 +1719,7 @@ Your decision:"""
                 try:
                     llm_timeout_raw = os.environ.get("REFLECTION_LLM_TIMEOUT_S", "0")
                     llm_timeout_val = int(float(llm_timeout_raw))
-                except Exception:
+                except (ValueError, TypeError):
                     llm_timeout_val = 0
 
                 if llm_timeout_val and llm_timeout_val > 0:
@@ -1799,7 +1800,7 @@ Your decision:"""
                                 if choices and isinstance(choices, list):
                                     msg = (choices[0] or {}).get("message") or {}
                                     content_val = msg.get("content") or ""
-                            except Exception:
+                            except (KeyError, AttributeError, TypeError, IndexError):
                                 content_val = None
                         llm_result = {
                             "content": content_val or "",
@@ -1924,7 +1925,7 @@ Please regenerate your reflection following these identity constraints strictly.
                         logger.info(
                             f"LLM raw reflection output: len={len(_raw)}, fenced={_fenced}, json_wrapped={_json_wrapped}. Head: {_raw[:200]}"
                         )
-                    except Exception:
+                    except (ValueError, KeyError, AttributeError):
                         pass
                 except asyncio.TimeoutError:
                     logger.error("Reflection LLM timed out despite disabled asyncio timeout.")
@@ -2021,7 +2022,7 @@ Please regenerate your reflection following these identity constraints strictly.
                     pre_constraints = await self._check_identity_constraints(temp_reflection)
                     if not (pre_constraints or {}).get('compliant', True):
                         needs_repair = True
-                except Exception:
+                except (AttributeError, KeyError, TypeError):
                     pass
                 if needs_repair:
                     repaired = await self._repair_reflection(
@@ -2090,7 +2091,7 @@ Please regenerate your reflection following these identity constraints strictly.
                                 token_count = len(latest.split())
                                 if token_count <= 8:
                                     return True
-                    except Exception:
+                    except (ValueError, AttributeError, IndexError):
                         pass
 
                     # Ensure the latest user message is explicitly grounded if available
@@ -2440,7 +2441,7 @@ Please regenerate your reflection following these identity constraints strictly.
             try:
                 if stored_reflection is not None and stored_reflection.get("turn_id") in (None, ""):
                     stored_reflection["turn_id"] = turn_id
-            except Exception:
+            except (KeyError, AttributeError, TypeError):
                 pass
             
             # Step 8: Check coherence and identity constraints (async safe)
@@ -2456,7 +2457,7 @@ Please regenerate your reflection following these identity constraints strictly.
                         stored_reflection.setdefault("result", {})
                         stored_reflection["result"].setdefault("trait_changes", reflection_result.get("trait_changes", []))
                         stored_reflection["result"].setdefault("themes", reflection_result.get("themes", []))
-                except Exception:
+                except (AttributeError, KeyError, TypeError):
                     pass
                 stored_reflection.setdefault("_meta", {})
                 stored_reflection["_meta"].update({
@@ -3414,7 +3415,7 @@ Please regenerate your reflection following these identity constraints strictly.
         sentiment = {"overall": "neutral", "user_sentiment": "neutral", "assistant_sentiment": "neutral"}
         
         try:
-            import re
+            pass
             
             # Simple sentiment analysis using keyword patterns
             positive_words = ['happy', 'good', 'great', 'excellent', 'love', 'like', 'amazing', 'wonderful', 'fantastic']

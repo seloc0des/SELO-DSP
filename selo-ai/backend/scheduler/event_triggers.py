@@ -7,10 +7,8 @@ reflections and tasks based on real-time events rather than just time-based sche
 
 import logging
 import asyncio
-from typing import Dict, List, Any, Optional, Callable, Set
+from typing import Dict, List, Any, Optional, Callable
 from datetime import datetime, timedelta, timezone
-import time
-import json
 
 from .scheduler_service import SchedulerService
 from .adaptive_scheduler import AdaptiveScheduler

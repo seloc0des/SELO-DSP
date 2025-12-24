@@ -6,16 +6,11 @@ It provides a unified interface for all scheduled tasks in the application.
 """
 
 import logging
-import asyncio
 from typing import Dict, List, Any, Callable, Optional, Union
 import time
-from datetime import datetime, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.jobstores.memory import MemoryJobStore
-from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.interval import IntervalTrigger
-from apscheduler.triggers.date import DateTrigger
 import pytz
 import os
 

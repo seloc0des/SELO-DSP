@@ -7,6 +7,8 @@ from .user import User
 from .conversation import Conversation, ConversationMessage, Memory
 from .example import ReflectionExample
 from .persona import Persona, PersonaEvolution, PersonaTrait
+from .relationship import RelationshipState
+from .relationship_memory import RelationshipMemory, AnticipatedEvent
 from .agent_state import (
     AffectiveState,
     MetaReflectionDirective,
@@ -27,6 +29,9 @@ __all__ = [
     "Persona",
     "PersonaEvolution",
     "PersonaTrait",
+    "RelationshipState",
+    "RelationshipMemory",
+    "AnticipatedEvent",
     "AffectiveState",
     "MetaReflectionDirective",
     "AgentGoal",

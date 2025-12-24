@@ -6,7 +6,7 @@ with other SELO AI components like the reflection system and conversation handle
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional, Union, Set, Tuple
+from typing import Dict, Any, List, Optional
 
 from ..llm.router import LLMRouter
 from ..memory.vector_store import VectorStore

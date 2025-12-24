@@ -5,13 +5,11 @@ This module integrates the Persona Engine with other SELO AI components,
 including SDL, Reflection, and Conversation systems.
 """
 
-import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 
 from .engine import PersonaEngine
-from ..llm.router import LLMRouter
 from ..memory.vector_store import VectorStore
 from ..db.repositories.persona import PersonaRepository
 from ..sdl.repository import LearningRepository
@@ -36,7 +34,7 @@ class PersonaIntegration:
         event_system: Optional[EventTriggerSystem] = None,
         persona_engine: Optional[PersonaEngine] = None,
         conversation_repo: Optional[Any] = None,
-        use_saga: bool = False,
+        use_saga: bool = True,  # Enabled by default for data consistency
     ):
         """Initialize persona integration."""
         self.llm_router = llm_router

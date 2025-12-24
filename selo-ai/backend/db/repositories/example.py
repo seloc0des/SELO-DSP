@@ -10,8 +10,7 @@ import logging
 from datetime import datetime, timezone
 import uuid
 import random
-from sqlalchemy import select, update, and_, or_
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, update
 
 from ..models.example import ReflectionExample
 from ..session import get_session
@@ -33,7 +32,6 @@ class ExampleRepository:
         
         Uses context manager pattern (get_session()) for database access.
         """
-        pass
         
     async def create_example(self, example_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -114,7 +112,6 @@ class ExampleRepository:
         Creates concise examples (~180 words) with emotional depth and narrative quality.
         Shorter examples prevent prompt size issues while maintaining teaching effectiveness.
         """
-        import json
         
         seed_examples = [
             # Single positive example showing proper structure extraction from minimal input

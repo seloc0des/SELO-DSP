@@ -11,7 +11,6 @@ from typing import Dict, Any, List, Optional
 
 from .orchestrator import SagaOrchestrator
 from ..db.repositories.saga import SagaRepository
-from ..db.models.saga import SagaStatus
 
 logger = logging.getLogger("selo.saga.monitor")
 

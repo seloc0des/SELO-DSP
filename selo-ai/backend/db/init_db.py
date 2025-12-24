@@ -6,7 +6,6 @@ Creates necessary tables for reflection system.
 import asyncio
 import logging
 import argparse
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import text
 
 # Centralize DB config by reusing the application's engine and session factory
@@ -217,6 +216,87 @@ async def create_tables():
         """))
         await conn.execute(text("""
             CREATE INDEX IF NOT EXISTS idx_persona_traits_persona_id ON persona_traits (persona_id);
+        """))
+
+        # Create relationship_state table (Week 1: single-user optimization)
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS relationship_state (
+                id TEXT PRIMARY KEY,
+                persona_id TEXT NOT NULL UNIQUE REFERENCES personas(id) ON DELETE CASCADE,
+                intimacy_level FLOAT NOT NULL DEFAULT 0.0,
+                trust_level FLOAT NOT NULL DEFAULT 0.5,
+                comfort_level FLOAT NOT NULL DEFAULT 0.3,
+                stage TEXT NOT NULL DEFAULT 'early',
+                days_known INTEGER NOT NULL DEFAULT 0,
+                conversations_count INTEGER NOT NULL DEFAULT 0,
+                communication_style TEXT,
+                shared_interests JSONB NOT NULL DEFAULT '[]'::jsonb,
+                inside_jokes JSONB NOT NULL DEFAULT '[]'::jsonb,
+                first_conversation TIMESTAMPTZ,
+                first_deep_conversation TIMESTAMPTZ,
+                first_vulnerability_moment TIMESTAMPTZ,
+                first_disagreement TIMESTAMPTZ,
+                first_inside_joke TIMESTAMPTZ,
+                user_name TEXT,
+                user_preferences JSONB NOT NULL DEFAULT '{}'::jsonb,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                last_conversation_at TIMESTAMPTZ
+            );
+        """))
+        await conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_relationship_state_persona_id ON relationship_state (persona_id);
+        """))
+
+        # Create relationship_memories table (Week 2: relationship memory system)
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS relationship_memories (
+                id TEXT PRIMARY KEY,
+                persona_id TEXT NOT NULL REFERENCES personas(id) ON DELETE CASCADE,
+                memory_type TEXT NOT NULL,
+                emotional_significance FLOAT NOT NULL DEFAULT 0.5,
+                emotional_tone TEXT,
+                intimacy_delta FLOAT NOT NULL DEFAULT 0.0,
+                trust_delta FLOAT NOT NULL DEFAULT 0.0,
+                narrative TEXT NOT NULL,
+                user_perspective TEXT,
+                context TEXT,
+                conversation_id TEXT,
+                tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+                occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                recall_count FLOAT NOT NULL DEFAULT 0,
+                last_recalled TIMESTAMPTZ
+            );
+        """))
+        await conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_relationship_memories_persona_id ON relationship_memories (persona_id);
+        """))
+        await conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_relationship_memories_memory_type ON relationship_memories (memory_type);
+        """))
+        await conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_relationship_memories_conversation_id ON relationship_memories (conversation_id);
+        """))
+
+        # Create anticipated_events table (Week 2: temporal awareness)
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS anticipated_events (
+                id TEXT PRIMARY KEY,
+                persona_id TEXT NOT NULL REFERENCES personas(id) ON DELETE CASCADE,
+                event_description TEXT NOT NULL,
+                event_type TEXT,
+                anticipated_date TIMESTAMPTZ,
+                mentioned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                conversation_id TEXT,
+                followed_up FLOAT NOT NULL DEFAULT 0.0,
+                follow_up_at TIMESTAMPTZ,
+                outcome TEXT,
+                importance FLOAT NOT NULL DEFAULT 0.5
+            );
+        """))
+        await conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_anticipated_events_persona_id ON anticipated_events (persona_id);
         """))
 
         # Create reflections table

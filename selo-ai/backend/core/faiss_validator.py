@@ -8,8 +8,7 @@ to ensure proper GPU acceleration is available when hardware supports it.
 import logging
 import subprocess
 import sys
-import os
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Tuple
 import importlib
 
 logger = logging.getLogger("selo.faiss_validator")
@@ -232,7 +231,6 @@ class FAISSValidator:
             
             # Use threading to prevent hanging
             import threading
-            import time
             
             gpu_index_result = [None]
             gpu_error = [None]

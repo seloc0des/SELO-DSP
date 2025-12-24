@@ -8,8 +8,6 @@ from fastapi import APIRouter, Depends, HTTPException, Body, Query
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
 import logging
-import json
-import os
 
 from ..reflection.models import (
     ReflectionCreateRequest,
@@ -27,7 +25,7 @@ router = APIRouter(
 )
 
 # Dependency to get reflection processor
-from ..api.dependencies import get_vector_store, get_llm_router, get_reflection_processor
+from ..api.dependencies import get_llm_router, get_reflection_processor
 from .security import is_system_or_admin
 
 # === Helper Functions ===

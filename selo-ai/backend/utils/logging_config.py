@@ -9,7 +9,7 @@ import logging
 import json
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional
+from typing import Optional
 from contextvars import ContextVar
 
 # Context variable for request correlation ID

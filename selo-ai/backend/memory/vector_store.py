@@ -9,8 +9,7 @@ import logging
 import os
 import numpy as np
 import json
-import time
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, List, Optional, Any
 import uuid
 
 try:
@@ -153,7 +152,6 @@ class VectorStore:
                         
                         # Use threading to prevent hanging on GPU initialization
                         import threading
-                        import time
                         
                         gpu_init_result = [None]
                         gpu_init_error = [None]

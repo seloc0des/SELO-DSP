@@ -5,7 +5,6 @@ Registers the session-based episode generation job with the scheduler system.
 """
 
 import logging
-from typing import Any, Dict
 
 logger = logging.getLogger("selo.scheduler.session_episodes")
 

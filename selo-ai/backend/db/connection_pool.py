@@ -40,9 +40,9 @@ class OptimizedConnectionPool:
         if database_url.startswith("postgresql://") and not database_url.startswith("postgresql+asyncpg://"):
             database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
         
-        # Optimized pool settings
-        pool_size = int(os.getenv("DB_POOL_SIZE", "20"))
-        max_overflow = int(os.getenv("DB_MAX_OVERFLOW", "30"))
+        # Optimized pool settings (reduced from aggressive defaults)
+        pool_size = int(os.getenv("DB_POOL_SIZE", "10"))
+        max_overflow = int(os.getenv("DB_MAX_OVERFLOW", "10"))
         pool_timeout = int(os.getenv("DB_POOL_TIMEOUT", "30"))
         pool_recycle = int(os.getenv("DB_POOL_RECYCLE", "3600"))  # 1 hour
         

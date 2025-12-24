@@ -8,7 +8,7 @@ evolution history, and trust metrics.
 import logging
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 logger = logging.getLogger("selo.constraints.persona_aware")
 

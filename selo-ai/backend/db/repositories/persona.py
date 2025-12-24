@@ -8,14 +8,13 @@ including CRUD operations for personas, traits, and evolutions.
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional, Union, Tuple
+from typing import Dict, Any, List, Optional
 
-from sqlalchemy import select, update, delete, and_, or_, desc, func, text
+from sqlalchemy import select, update, delete, and_, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from ..base import Base
-from ..session import get_session, AsyncSessionLocal
+from ..session import get_session
 from ..models.persona import Persona, PersonaTrait, PersonaEvolution
 from ..models.conversation import Conversation, ConversationMessage, Memory
 from ..models.reflection import Reflection, ReflectionMemory, ReflectionSchedule, RelationshipQuestionQueue
@@ -124,6 +123,42 @@ class PersonaRepository:
             include_traits=include_traits,
             include_evolutions=include_evolutions
         )
+    
+    async def get_default_persona(
+        self,
+        session: Optional[AsyncSession] = None,
+        include_traits: bool = True,
+        include_evolutions: bool = False
+    ) -> Optional[Persona]:
+        """
+        Get the default persona (single-user application optimization).
+        No user_id needed—there's only one persona in single-user context.
+        
+        Args:
+            session: Optional database session
+            include_traits: Whether to include persona traits
+            include_evolutions: Whether to include persona evolutions
+            
+        Returns:
+            Persona object or None if not found
+        """
+        async with get_session(session) as session:
+            # Build query for default persona
+            query = select(Persona).where(
+                and_(Persona.is_default == True, Persona.is_active == True)
+            )
+            
+            # Include relationships if requested
+            if include_traits:
+                query = query.options(selectinload(Persona.traits))
+            if include_evolutions:
+                query = query.options(selectinload(Persona.evolutions))
+                
+            # Execute query
+            result = await session.execute(query)
+            persona = result.scalars().first()
+            
+            return persona
     
     async def get_persona_by_user(
         self, 
@@ -1171,7 +1206,6 @@ class PersonaRepository:
         try:
             # Import LLM router for summary generation
             try:
-                from ...llm.router import LLMRouter
                 from ...api.dependencies import get_llm_router
                 llm_router = await get_llm_router()
             except Exception:
@@ -1307,7 +1341,6 @@ Generate a summary that reflects SELO's current evolved state based on this fact
                 summary = data.get("summary", summary)
             except (json.JSONDecodeError, TypeError, AttributeError) as e:
                 logger.debug(f"Summary is not valid JSON, using as-is: {e}")
-                pass
         
         # Clean up extra whitespace
         summary = " ".join(summary.split())

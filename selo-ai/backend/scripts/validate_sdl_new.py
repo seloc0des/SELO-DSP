@@ -10,12 +10,9 @@ Usage:
 """
 
 import asyncio
-import json
 import logging
-import time
 import argparse
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
 
 # Import script helpers for centralized DI
 # Try relative import first (when run as module), then absolute (when run as script)

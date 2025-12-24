@@ -8,7 +8,7 @@ Catches parameter mismatches, missing methods, and configuration issues early.
 import logging
 import asyncio
 import inspect
-from typing import Dict, List, Any, Optional, Callable
+from typing import Dict, Any
 from datetime import datetime, timezone
 import importlib
 
@@ -16,7 +16,6 @@ logger = logging.getLogger("selo.startup.validator")
 
 class ValidationError(Exception):
     """Custom exception for startup validation failures."""
-    pass
 
 class StartupValidator:
     """

@@ -9,12 +9,9 @@ Usage:
     python validate_persona_system_new.py [--mock] [--component engine|integration|repository]
 """
 
-import json
 import uuid
 import asyncio
 import argparse
-from datetime import datetime
-from typing import Dict, Any, Optional, List
 
 # Import script helpers for centralized DI
 # Try relative import first (when run as module), then absolute (when run as script)

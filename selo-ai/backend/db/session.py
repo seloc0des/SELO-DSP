@@ -130,7 +130,6 @@ REFERENCES
 """
 
 import os
-import warnings
 from typing import AsyncGenerator, Optional
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool

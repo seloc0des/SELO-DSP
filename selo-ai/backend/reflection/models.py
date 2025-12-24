@@ -5,9 +5,9 @@ This module defines the data models for reflections and related entities.
 These models are used for API serialization/deserialization and validation.
 """
 
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, List, Optional, Any
 from pydantic import BaseModel, Field
-from datetime import datetime, timezone
+from datetime import datetime
 import uuid
 
 try:
