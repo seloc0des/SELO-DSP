@@ -44,12 +44,14 @@ def run_bootstrap(mock: bool = False) -> int:
             return 2
 
         conversation_repo = services.get("conversation_repo")
+        reflection_repo = services.get("reflection_repo")
         bootstrapper = PersonaBootstrapper(
             llm_router=llm_router,
             prompt_builder=prompt_builder,
             persona_repo=persona_repo,
             user_repo=user_repo,
             conversation_repo=conversation_repo,
+            reflection_repo=reflection_repo,
         )
 
         logging.info("=" * 80)

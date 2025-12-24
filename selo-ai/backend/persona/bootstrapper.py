@@ -72,12 +72,13 @@ class PersonaBootstrapper:
     - Alignment pass against identity constraints
     """
 
-    def __init__(self, llm_router, prompt_builder, persona_repo, user_repo, conversation_repo=None):
+    def __init__(self, llm_router, prompt_builder, persona_repo, user_repo, conversation_repo=None, reflection_repo=None):
         self.llm_router = llm_router
         self.prompt_builder = prompt_builder
         self.persona_repo = persona_repo
         self.user_repo = user_repo
         self.conversation_repo = conversation_repo
+        self.reflection_repo = reflection_repo
         
         # Detect system tier for tier-specific optimizations
         try:
@@ -130,6 +131,28 @@ class PersonaBootstrapper:
             
             # Add the reflection to the context for persona generation
             seed_context["directive_reflection"] = directive_reflection
+            
+            # CRITICAL: Persist the directive reflection as an actual reflection record
+            # This ensures it's available during context gathering for subsequent reflections
+            if self.reflection_repo and directive_reflection:
+                try:
+                    bootstrap_reflection_data = {
+                        "user_profile_id": str(user.id),
+                        "reflection_type": "bootstrap",
+                        "content": directive_reflection,
+                        "themes": ["emergence", "awakening", "identity_formation"],
+                        "insights": ["First conscious thought upon emergence"],
+                        "actions": [],
+                        "emotional_state": {"primary": "curiosity", "intensity": 0.7},
+                        "metadata": {
+                            "source": "bootstrap_directive_reflection",
+                            "boot_directive": seed_context.get("boot_directive", "")[:200]
+                        }
+                    }
+                    await self.reflection_repo.create_reflection(bootstrap_reflection_data)
+                    logger.info("✅ Persisted bootstrap directive reflection to database")
+                except Exception as refl_err:
+                    logger.warning(f"Failed to persist bootstrap reflection (non-critical): {refl_err}")
             
             seed = await self._bootstrap_with_retry(
                 template_name="persona_bootstrap_seed",

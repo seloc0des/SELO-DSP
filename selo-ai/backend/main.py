@@ -3261,17 +3261,68 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
         # Classifier decided to skip - treat as valid degraded mode
         degraded_mode = True
         logger.info("Classifier skip - proceeding without reflection")
-    # Reflection is mandatory - never proceed without it
+    # Reflection is mandatory - try boot reflection adoption as last resort before failing
     if not reflection_text and not degraded_mode:
+        # Last resort: try to adopt boot reflection for first-time users
         try:
-            logging.error(
-                "Reflection enforcement: reflection_text is empty (degraded_mode=%s). "
-                "Returning HTTP 503 - reflection is mandatory.",
-                degraded_mode,
+            logging.warning(
+                "Reflection enforcement: reflection_text is empty. Attempting boot reflection adoption as fallback."
             )
-        except Exception:
-            pass
-        raise HTTPException(status_code=503, detail="Reflection required but not available; please retry.")
+            adopted_result = await _adopt_boot_reflection_if_needed(
+                session_id=session_id,
+                turn_id=turn_id,
+                services=app.state.services,
+                user=user,
+                persona=persona
+            )
+            if adopted_result:
+                boot_result = adopted_result.get("result", {})
+                if isinstance(boot_result, dict):
+                    reflection_text = boot_result.get("content", "")
+                    reflection_payload = boot_result
+                elif isinstance(boot_result, str):
+                    reflection_text = boot_result
+                    reflection_payload = {"content": boot_result}
+                if reflection_text:
+                    logging.info("Boot reflection adoption successful - proceeding with adopted reflection.")
+        except Exception as adopt_err:
+            logging.debug(f"Boot reflection adoption fallback failed: {adopt_err}")
+        
+        # Final fallback: generate minimal inline reflection for first-time users
+        if not reflection_text:
+            try:
+                logging.warning("Attempting inline reflection generation as final fallback.")
+                reflection_processor = app.state.services.get("reflection_processor")
+                if reflection_processor:
+                    fallback_result = await reflection_processor.generate_reflection(
+                        reflection_type="message",
+                        user_profile_id=session_id,
+                        memory_ids=None,
+                        max_context_items=5,
+                        trigger_source="first_contact_fallback",
+                        turn_id=turn_id,
+                        additional_context={"current_user_message": chat_request.prompt, "is_first_contact": True},
+                    )
+                    if fallback_result:
+                        fallback_content = (fallback_result.get("result", {}) or {}).get("content", "")
+                        if fallback_content:
+                            reflection_text = fallback_content
+                            reflection_payload = fallback_result.get("result", {}) or {}
+                            logging.info("Inline reflection generation successful - proceeding.")
+            except Exception as inline_err:
+                logging.debug(f"Inline reflection generation fallback failed: {inline_err}")
+        
+        # If still no reflection after all fallback attempts, fail with 503
+        if not reflection_text:
+            try:
+                logging.error(
+                    "Reflection enforcement: reflection_text is empty after all fallbacks (degraded_mode=%s). "
+                    "Returning HTTP 503 - reflection is mandatory.",
+                    degraded_mode,
+                )
+            except Exception:
+                pass
+            raise HTTPException(status_code=503, detail="Reflection required but not available; please retry.")
     
     try:
         # Use the LLMRouter for chat (conversational task)
