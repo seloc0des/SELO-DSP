@@ -272,7 +272,24 @@ class ReflectionProcessor:
         self.enable_deferred_embeddings = enable_deferred_embeddings
 
         # Precompile language detection pattern and load reflection config for translation fallbacks
-        self._non_english_pattern = re.compile(r'[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]+')
+        # Expanded pattern to cover more non-Latin scripts:
+        # - CJK: Chinese (4e00-9fff), Japanese Hiragana (3040-309f), Katakana (30a0-30ff), Korean (ac00-d7af)
+        # - Cyrillic: Russian, Ukrainian, etc. (0400-04ff)
+        # - Arabic: (0600-06ff)
+        # - Hebrew: (0590-05ff)
+        # - Thai: (0e00-0e7f)
+        # - Devanagari/Hindi: (0900-097f)
+        # - Greek: (0370-03ff)
+        self._non_english_pattern = re.compile(
+            r'[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af'  # CJK
+            r'\u0400-\u04ff'  # Cyrillic
+            r'\u0600-\u06ff'  # Arabic
+            r'\u0590-\u05ff'  # Hebrew
+            r'\u0e00-\u0e7f'  # Thai
+            r'\u0900-\u097f'  # Devanagari
+            r'\u0370-\u03ff'  # Greek
+            r']+'
+        )
 
         try:
             from ..config.reflection_config import get_reflection_config

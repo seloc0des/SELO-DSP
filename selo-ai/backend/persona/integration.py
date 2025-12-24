@@ -10,11 +10,18 @@ from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 
 from .engine import PersonaEngine
-from ..memory.vector_store import VectorStore
-from ..db.repositories.persona import PersonaRepository
-from ..sdl.repository import LearningRepository
-from ..scheduler.event_triggers import EventTriggerSystem
-from ..db.repositories.reflection import ReflectionRepository
+try:
+    from ..memory.vector_store import VectorStore
+    from ..db.repositories.persona import PersonaRepository
+    from ..sdl.repository import LearningRepository
+    from ..scheduler.event_triggers import EventTriggerSystem
+    from ..db.repositories.reflection import ReflectionRepository
+except ImportError:
+    from memory.vector_store import VectorStore
+    from db.repositories.persona import PersonaRepository
+    from sdl.repository import LearningRepository
+    from scheduler.event_triggers import EventTriggerSystem
+    from db.repositories.reflection import ReflectionRepository
 
 logger = logging.getLogger("selo.persona.integration")
 

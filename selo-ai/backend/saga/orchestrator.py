@@ -283,20 +283,43 @@ class SagaOrchestrator:
         # Update saga status to compensating
         await self.saga_repo.update_saga_status(saga_id, SagaStatus.COMPENSATING)
         
+        # Track failed compensations for debugging
+        failed_compensations: List[Dict[str, Any]] = []
+        
         # Compensate in reverse order
         for step in reversed(completed_steps):
-            await self._compensate_step(step)
+            success = await self._compensate_step(step)
+            if not success:
+                failed_compensations.append({
+                    "step_id": step.get("id"),
+                    "step_name": step.get("step_name"),
+                })
         
-        # Mark saga as compensated
-        await self.saga_repo.update_saga_status(saga_id, SagaStatus.COMPENSATED)
+        # Log failed compensations for debugging if any
+        if failed_compensations:
+            logger.warning(
+                f"Saga {saga_id} had {len(failed_compensations)} failed compensation(s): "
+                f"{[fc['step_name'] for fc in failed_compensations]}"
+            )
+        
+        # Mark saga as compensated (with partial failure info if applicable)
+        compensation_metadata = {"failed_compensations": failed_compensations} if failed_compensations else {}
+        await self.saga_repo.update_saga_status(
+            saga_id, 
+            SagaStatus.COMPENSATED,
+            error_data=compensation_metadata if failed_compensations else None
+        )
         logger.info(f"Saga {saga_id} compensation completed")
     
-    async def _compensate_step(self, step: Dict[str, Any]):
+    async def _compensate_step(self, step: Dict[str, Any]) -> bool:
         """
         Execute compensation for a single step.
         
         Args:
             step: Step to compensate
+            
+        Returns:
+            True if compensation succeeded, False otherwise
         """
         step_id = step['id']
         compensation_handler_name = step.get('compensation_handler')
@@ -304,7 +327,7 @@ class SagaOrchestrator:
         if not compensation_handler_name:
             logger.warning(f"No compensation handler defined for step {step['step_name']}")
             await self.saga_repo.update_step_status(step_id, StepStatus.COMPENSATED)
-            return
+            return True  # No handler needed, consider it successful
         
         handler = self._compensation_handlers.get(compensation_handler_name)
         if not handler:
@@ -312,7 +335,7 @@ class SagaOrchestrator:
                 f"Compensation handler {compensation_handler_name} not registered "
                 f"for step {step['step_name']}"
             )
-            return
+            return False  # Handler missing is a failure
         
         # Update step to compensating
         await self.saga_repo.update_step_status(step_id, StepStatus.COMPENSATING)
@@ -327,6 +350,7 @@ class SagaOrchestrator:
             # Mark as compensated
             await self.saga_repo.update_step_status(step_id, StepStatus.COMPENSATED)
             logger.info(f"Step {step['step_name']} compensated successfully")
+            return True
             
         except Exception as e:
             logger.error(
@@ -334,6 +358,7 @@ class SagaOrchestrator:
                 exc_info=True
             )
             # Continue with other compensations even if one fails
+            return False
     
     async def retry_failed_saga(self, saga_id: str) -> Dict[str, Any]:
         """

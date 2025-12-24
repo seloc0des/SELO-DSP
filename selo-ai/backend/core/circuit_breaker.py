@@ -52,6 +52,8 @@ class CircuitBreaker:
         self.lock = threading.RLock()
         
         # Metrics tracking for monitoring
+        # Use bounded counters to prevent integer overflow in long-running deployments
+        self._metrics_max = 10_000_000  # Cap at 10 million to prevent overflow
         self.metrics = {
             "total_failures": 0,
             "total_successes": 0,
@@ -147,7 +149,7 @@ class CircuitBreaker:
                 if time.time() - self.last_failure_time >= self.config.recovery_timeout:
                     self.state = CircuitState.HALF_OPEN
                     self.success_count = 0
-                    self.metrics["total_half_opens"] += 1
+                    self._increment_metric("total_half_opens")
                     self.metrics["last_state_change"] = time.time()
                     logger.info(f"🔄 Circuit '{self.name}' entering half-open state")
                     return True
@@ -157,17 +159,23 @@ class CircuitBreaker:
             
         return False
     
+    def _increment_metric(self, key: str) -> None:
+        """Increment a metric with bounds checking to prevent overflow."""
+        if self.metrics[key] < self._metrics_max:
+            self.metrics[key] += 1
+        # If at max, counter stays at max (bounded)
+    
     def _on_success(self):
         """Handle successful execution."""
         with self.lock:
-            self.metrics["total_successes"] += 1
+            self._increment_metric("total_successes")
             
             if self.state == CircuitState.HALF_OPEN:
                 self.success_count += 1
                 if self.success_count >= self.config.success_threshold:
                     self.state = CircuitState.CLOSED
                     self.failure_count = 0
-                    self.metrics["total_closes"] += 1
+                    self._increment_metric("total_closes")
                     self.metrics["last_state_change"] = time.time()
                     logger.info(f"✅ Circuit '{self.name}' closed - recovered")
             elif self.state == CircuitState.CLOSED:
@@ -178,17 +186,17 @@ class CircuitBreaker:
         with self.lock:
             self.failure_count += 1
             self.last_failure_time = time.time()
-            self.metrics["total_failures"] += 1
+            self._increment_metric("total_failures")
             
             if self.state == CircuitState.HALF_OPEN:
                 self.state = CircuitState.OPEN
-                self.metrics["total_opens"] += 1
+                self._increment_metric("total_opens")
                 self.metrics["last_state_change"] = time.time()
                 logger.warning(f"❌ Circuit '{self.name}' opened - recovery failed")
             elif (self.state == CircuitState.CLOSED and 
                   self.failure_count >= self.config.failure_threshold):
                 self.state = CircuitState.OPEN
-                self.metrics["total_opens"] += 1
+                self._increment_metric("total_opens")
                 self.metrics["last_state_change"] = time.time()
                 logger.warning(f"❌ Circuit '{self.name}' opened - failure threshold reached")
     
@@ -240,7 +248,7 @@ class CircuitBreaker:
         """Manually reset circuit breaker to closed state."""
         with self.lock:
             if self.state != CircuitState.CLOSED:
-                self.metrics["total_closes"] += 1
+                self._increment_metric("total_closes")
                 self.metrics["last_state_change"] = time.time()
             
             self.state = CircuitState.CLOSED

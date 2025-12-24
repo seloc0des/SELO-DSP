@@ -4,9 +4,14 @@ import os
 import re
 from typing import Optional, Dict, Any, List
 
-from ..utils.text_utils import count_words
-from ..utils.system_profile import detect_system_profile
-from ..core.boot_seed_system import get_random_directive
+try:
+    from ..utils.text_utils import count_words
+    from ..utils.system_profile import detect_system_profile
+    from ..core.boot_seed_system import get_random_directive
+except ImportError:
+    from utils.text_utils import count_words
+    from utils.system_profile import detect_system_profile
+    from core.boot_seed_system import get_random_directive
 
 logger = logging.getLogger("selo.persona.bootstrapper")
 
@@ -272,6 +277,8 @@ class PersonaBootstrapper:
                         include_traits=True,
                         include_evolutions=True,
                     )
+                    # Initialize persona_after to current persona to avoid undefined variable
+                    persona_after = persona
                     if refreshed:
                         persona = refreshed
                         persona_after = refreshed
@@ -354,16 +361,15 @@ class PersonaBootstrapper:
             
             # Socket.io emit (non-critical - can fail without breaking bootstrap)
             try:
+                # Import socketio registry with standardized import pattern
+                get_socketio_server = None
                 try:
-                    from ..db.repositories.persona import PersonaTrait  # type: ignore
-                    from ...backend.socketio.registry import get_socketio_server  # type: ignore
+                    from ..socketio.registry import get_socketio_server
                 except ImportError:
                     try:
-                        # Fallback absolute imports
-                        from backend.db.repositories.persona import PersonaTrait  # type: ignore
-                        from backend.socketio.registry import get_socketio_server  # type: ignore
+                        from backend.socketio.registry import get_socketio_server
                     except ImportError:
-                        get_socketio_server = None  # type: ignore
+                        logger.debug("Socket.IO registry not available for bootstrap summary emit")
                 
                 # Count traits if available
                 trait_count = 0
@@ -397,6 +403,22 @@ class PersonaBootstrapper:
             logger.info("=" * 80)
             
             verification_failures = []
+            
+            # Initialize all db_* variables with defaults to prevent undefined variable errors
+            # These will be populated during verification if successful
+            db_name = None
+            db_mantra = ""
+            db_desc = ""
+            db_personality = {}
+            db_values = {}
+            db_preferences = {}
+            db_goals = {}
+            db_comm_style = {}
+            db_expertise = None
+            db_boot = ""
+            db_first = ""
+            db_traits = []
+            db_evolutions = []
             
             try:
                 # Re-fetch the complete persona from DB to verify persistence
@@ -1326,7 +1348,7 @@ Write your complete reflection in ENGLISH now:"""
             logger.info(f"✓ Generated unique name: {formatted}")
             return formatted
         except Exception as _e:
-            logger.debug(f"Name LLM generation failed: {_e}")
+            logger.warning(f"Name LLM generation failed: {_e}")
             raise _e
 
     async def _generate_persona_mantra(

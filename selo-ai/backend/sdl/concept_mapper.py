@@ -10,7 +10,10 @@ import json
 import logging
 from typing import Dict, Any, List, Optional, Tuple
 
-from ..llm.router import LLMRouter
+try:
+    from ..llm.router import LLMRouter
+except ImportError:
+    from llm.router import LLMRouter
 from .learning_models import Learning
 
 logger = logging.getLogger("selo.sdl.concept_mapper")

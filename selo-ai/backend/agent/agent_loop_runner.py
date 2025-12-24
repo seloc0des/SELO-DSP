@@ -393,9 +393,14 @@ class AgentLoopRunner:
         if not self.adaptive_enabled:
             return
         
+        # Adaptive scheduling constants - extracted for easier tuning
+        INTERVAL_MIN_FLOOR = 60           # Absolute minimum interval in seconds
+        INTERVAL_MIN_RATIO = 0.25         # Minimum as ratio of base (25%)
+        INTERVAL_MAX_RATIO = 4.0          # Maximum as ratio of base (4x)
+        
         base_interval = self.base_interval_seconds
-        min_interval = max(60, base_interval // 4)  # Minimum: 25% of base
-        max_interval = base_interval * 4  # Maximum: 4x base (up to 2 hours)
+        min_interval = max(INTERVAL_MIN_FLOOR, int(base_interval * INTERVAL_MIN_RATIO))
+        max_interval = int(base_interval * INTERVAL_MAX_RATIO)  # Maximum: 4x base (up to 2 hours)
         
         # Calculate activity rate from recent history
         if len(self._activity_history) >= 3:
@@ -404,37 +409,52 @@ class AgentLoopRunner:
         else:
             activity_rate = 0.5  # Default to neutral
         
+        # Adaptive scheduling thresholds and multipliers - extracted for easier tuning
+        EXTENDED_IDLE_THRESHOLD = 8      # Consecutive idle runs for extended idle
+        VERY_IDLE_THRESHOLD = 5          # Consecutive idle runs for very idle
+        MODERATE_IDLE_THRESHOLD = 3      # Consecutive idle runs for moderate idle
+        ACTIVE_THRESHOLD = 3             # Consecutive active runs for active state
+        ACTIVITY_HIGH_THRESHOLD = 0.6    # Activity rate above this = generally active
+        ACTIVITY_LOW_THRESHOLD = 0.3     # Activity rate below this = generally idle
+        
+        STRETCH_MAJOR = 2.0              # Interval multiplier for very idle (100% increase)
+        STRETCH_MODERATE = 1.5           # Interval multiplier for moderate idle (50% increase)
+        SHRINK_ACTIVE = 0.7              # Interval multiplier for active (30% decrease)
+        SHRINK_GENERAL = 0.75            # Interval multiplier for generally active
+        STRETCH_GENERAL = 1.5            # Interval multiplier for generally idle
+        RESOURCE_CONSTRAINT_MULTIPLIER = 1.5  # Multiplier when under resource load
+        
         # Adjust interval based on activity
-        if self._consecutive_idle_runs >= 8:
+        if self._consecutive_idle_runs >= EXTENDED_IDLE_THRESHOLD:
             # Extended idle (2+ hours) - use maximum interval
             new_interval = max_interval
             logger.debug(f"Extended idle detected ({self._consecutive_idle_runs} runs), using max interval")
             
-        elif self._consecutive_idle_runs >= 5:
+        elif self._consecutive_idle_runs >= VERY_IDLE_THRESHOLD:
             # Very idle (1+ hour) - stretch interval significantly
             current = self._current_interval or base_interval
-            new_interval = int(current * 2.0)  # Increase by 100%
+            new_interval = int(current * STRETCH_MAJOR)
             new_interval = min(new_interval, max_interval)  # Cap at maximum
             
-        elif self._consecutive_idle_runs >= 3:
+        elif self._consecutive_idle_runs >= MODERATE_IDLE_THRESHOLD:
             # Moderately idle (45+ min) - stretch interval moderately
             current = self._current_interval or base_interval
-            new_interval = int(current * 1.5)  # Increase by 50%
+            new_interval = int(current * STRETCH_MODERATE)
             new_interval = min(new_interval, max_interval)  # Cap at maximum
             
-        elif self._consecutive_active_runs >= 3:
+        elif self._consecutive_active_runs >= ACTIVE_THRESHOLD:
             # Very active - shorten interval
             current = self._current_interval or base_interval
-            new_interval = int(current * 0.7)  # Decrease by 30%
+            new_interval = int(current * SHRINK_ACTIVE)
             new_interval = max(new_interval, min_interval)  # Floor at minimum
             
-        elif activity_rate > 0.6:
+        elif activity_rate > ACTIVITY_HIGH_THRESHOLD:
             # Generally active - use shorter interval
-            new_interval = int(base_interval * 0.75)
+            new_interval = int(base_interval * SHRINK_GENERAL)
             
-        elif activity_rate < 0.3:
+        elif activity_rate < ACTIVITY_LOW_THRESHOLD:
             # Generally idle - use longer interval
-            new_interval = int(base_interval * 1.5)
+            new_interval = int(base_interval * STRETCH_GENERAL)
             
         else:
             # Normal activity - use base interval
@@ -443,7 +463,7 @@ class AgentLoopRunner:
         # Check resource constraints
         if self._resource_monitor and self._resource_monitor.is_resource_constrained():
             # Under load - use longer interval
-            new_interval = max(new_interval, int(base_interval * 1.5))
+            new_interval = max(new_interval, int(base_interval * RESOURCE_CONSTRAINT_MULTIPLIER))
             logger.debug("Agent loop extending interval due to resource constraints")
         
         # Apply new interval if significantly different

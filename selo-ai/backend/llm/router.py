@@ -4,13 +4,28 @@ Provides dynamic LLM routing and logging for SELO AI subsystems.
 """
 import logging
 import os
-from typing import Literal, Dict, Any
+from typing import Literal, Dict, Any, Optional, Union
 import inspect
+from collections import deque
 
 from .controller import LLMController
 from .response_validator import ResponseValidator
 from .streaming_validator import validate_streaming_response
+
 logger = logging.getLogger("selo.llm.router")
+
+# Centralized default token budgets for consistency across the codebase
+# These values are used when environment variables and system profile detection fail
+DEFAULT_TOKEN_BUDGETS = {
+    "reflection_max_tokens": 480,      # Concise reflection cap
+    "reflection_word_max": 180,        # Concise word limit
+    "chat_min_completion": 256,        # ~4 dense sentences
+    "reflection_completion_buffer": 60, # JSON scaffolding buffer
+    "reflection_min_completion": 260,   # Minimum completion tokens
+}
+
+# Maximum usage log entries to prevent memory leak in long-running deployments
+MAX_USAGE_LOG_SIZE = 1000
 
 def _resolve_reflection_cap() -> int:
     """Resolve reflection token cap with tier-aware fallback."""
@@ -27,9 +42,9 @@ def _resolve_reflection_cap() -> int:
             env_cap = profile["budgets"]["reflection_max_tokens"]
             logger.debug(f"Using tier-aware reflection cap: {env_cap} (tier={profile['tier']})")
         except Exception as e:
-            # Final fallback to concise standard value
-            env_cap = 480
-            logger.warning(f"Failed to detect system tier, using concise fallback: {e}")
+            # Final fallback to centralized default value
+            env_cap = DEFAULT_TOKEN_BUDGETS["reflection_max_tokens"]
+            logger.warning(f"Failed to detect system tier, using DEFAULT_TOKEN_BUDGETS fallback ({env_cap}): {e}")
     
     return env_cap
 
@@ -51,9 +66,9 @@ def _resolve_reflection_min_completion() -> int:
             word_max = profile["budgets"].get("reflection_word_cap", 180)
             logger.debug(f"Using tier-aware word max: {word_max} (tier={profile['tier']})")
         except Exception as e:
-            # Final fallback to concise value
-            word_max = 180
-            logger.warning(f"Failed to detect system tier for word max, using concise fallback: {e}")
+            # Final fallback to centralized default value
+            word_max = DEFAULT_TOKEN_BUDGETS["reflection_word_max"]
+            logger.warning(f"Failed to detect system tier for word max, using DEFAULT_TOKEN_BUDGETS fallback ({word_max}): {e}")
     
     # Buffer for JSON scaffolding and metadata around the narrative content
     buffer_tokens = int(os.getenv("REFLECTION_COMPLETION_BUFFER", "60"))
@@ -66,9 +81,9 @@ def _resolve_chat_min_completion() -> int:
         env_min = int(os.getenv("CHAT_MIN_COMPLETION_TOKENS", "0"))
     except Exception:
         env_min = 0
-    # Default to ~4 dense sentences worth of tokens when not configured explicitly
+    # Default to centralized value when not configured explicitly
     if env_min <= 0:
-        env_min = 256
+        env_min = DEFAULT_TOKEN_BUDGETS["chat_min_completion"]
     return env_min
 
 
@@ -80,11 +95,12 @@ class LLMRouter:
     Central router for selecting and logging LLM usage.
     Supports dynamic routing by task type and analytics.
     """
-    def __init__(self, conversational_llm: LLMController, analytical_llm: LLMController, reflection_llm: LLMController | None = None):
+    def __init__(self, conversational_llm: LLMController, analytical_llm: LLMController, reflection_llm: Optional[LLMController] = None):
         self.conversational_llm = conversational_llm
         self.analytical_llm = analytical_llm
         self.reflection_llm = reflection_llm
-        self.usage_log = []  # In-memory log; replace with persistent store as needed
+        # Use bounded deque to prevent memory leak in long-running deployments
+        self.usage_log: deque = deque(maxlen=MAX_USAGE_LOG_SIZE)
 
     async def route(self, *, task_type: Literal["chat","persona_prompt","persona_evolve","sdl","reflection","reflection_classifier","embedding"], 
                    **kwargs) -> Dict[str, Any]:

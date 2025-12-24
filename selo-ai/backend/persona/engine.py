@@ -10,11 +10,6 @@ import logging
 from typing import Dict, Any, List, Optional
 
 try:
-    pass
-except ImportError:
-    pass
-
-try:
     from ..memory.vector_store import VectorStore
 except ImportError:
     from backend.memory.vector_store import VectorStore

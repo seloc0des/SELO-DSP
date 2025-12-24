@@ -110,15 +110,28 @@ const Chat = ({ userId }) => {
     // If App provided a userId, use it and persist to localStorage for continuity
     if (userId && typeof userId === 'string') {
       setSessionId(userId);
-      try { localStorage.setItem('selo_ai_session_id', userId); } catch (_) {}
+      try { 
+        localStorage.setItem('selo_ai_session_id', userId); 
+      } catch (storageErr) {
+        logger.warn('localStorage unavailable for session persistence (private browsing?)', storageErr);
+      }
       return;
     }
     // Fallback to existing persisted session id or create a new one
     let sid = null;
-    try { sid = localStorage.getItem('selo_ai_session_id'); } catch (_) { sid = null; }
+    try { 
+      sid = localStorage.getItem('selo_ai_session_id'); 
+    } catch (storageErr) { 
+      logger.warn('localStorage read failed (private browsing mode?)', storageErr);
+      sid = null; 
+    }
     if (!sid) {
       sid = uuidv4();
-      try { localStorage.setItem('selo_ai_session_id', sid); } catch (_) {}
+      try { 
+        localStorage.setItem('selo_ai_session_id', sid); 
+      } catch (storageErr) {
+        logger.warn('localStorage write failed - session will not persist across refreshes', storageErr);
+      }
     }
     setSessionId(sid);
   }, [userId]);

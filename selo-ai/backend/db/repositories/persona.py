@@ -276,8 +276,15 @@ class PersonaRepository:
             # Update last_modified timestamp
             persona.last_modified = datetime.now(timezone.utc)
             
-            # Commit changes to database
-            await session.commit()
+            # Flush changes to ensure they're staged, then commit with error handling
+            # This pattern ensures proper rollback on failure
+            try:
+                await session.flush()
+                await session.commit()
+            except Exception as commit_err:
+                logger.error(f"Failed to commit persona update for {persona_id}: {commit_err}")
+                await session.rollback()
+                raise
             
             logger.info(f"Updated persona {persona_id}")
             return persona

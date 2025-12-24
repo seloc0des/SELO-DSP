@@ -10,10 +10,15 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 
-from ..llm.router import LLMRouter
-from ..memory.vector_store import VectorStore
+try:
+    from ..llm.router import LLMRouter
+    from ..memory.vector_store import VectorStore
+    from ..db.repositories.reflection import ReflectionRepository
+except ImportError:
+    from llm.router import LLMRouter
+    from memory.vector_store import VectorStore
+    from db.repositories.reflection import ReflectionRepository
 from .repository import LearningRepository
-from ..db.repositories.reflection import ReflectionRepository
 from .concept_mapper import ConceptMapper
 from .learning_models import Learning
 

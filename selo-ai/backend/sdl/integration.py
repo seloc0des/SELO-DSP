@@ -8,11 +8,18 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 
-from ..llm.router import LLMRouter
-from ..memory.vector_store import VectorStore
-from ..db.repositories.reflection import ReflectionRepository
-from ..db.repositories.user import UserRepository
-from ..scheduler.event_triggers import EventType, EventTriggerSystem
+try:
+    from ..llm.router import LLMRouter
+    from ..memory.vector_store import VectorStore
+    from ..db.repositories.reflection import ReflectionRepository
+    from ..db.repositories.user import UserRepository
+    from ..scheduler.event_triggers import EventType, EventTriggerSystem
+except ImportError:
+    from llm.router import LLMRouter
+    from memory.vector_store import VectorStore
+    from db.repositories.reflection import ReflectionRepository
+    from db.repositories.user import UserRepository
+    from scheduler.event_triggers import EventType, EventTriggerSystem
 from .repository import LearningRepository
 from .concept_mapper import ConceptMapper
 from .engine import SDLEngine

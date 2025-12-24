@@ -352,9 +352,8 @@ class SchedulerIntegration:
             logger.info(f"High importance memory detected for user {user_id}, considering reflection")
             
             # Implement logic to trigger reflection based on important memories
+            reflection_succeeded = False
             try:
-                self._memory_trigger_cooldowns[cooldown_key] = now + cooldown_seconds
-
                 # First attempt immediate reflection (must-have behavior)
                 if hasattr(self, "reflection_processor") and self.reflection_processor:
                     try:
@@ -365,7 +364,7 @@ class SchedulerIntegration:
                             trigger_source="important_memory_immediate",
                         )
                         logger.info("Immediate memory-triggered reflection executed for user %s", user_id)
-                        return
+                        reflection_succeeded = True
                     except Exception as immediate_err:
                         logger.warning(
                             "Immediate reflection failed for user %s (will schedule fallback): %s",
@@ -374,7 +373,7 @@ class SchedulerIntegration:
                         )
 
                 # Fallback: schedule a reflection if scheduler is available
-                if self.reflection_scheduler:
+                if not reflection_succeeded and self.reflection_scheduler:
                     await self.reflection_scheduler.schedule_reflection(
                         user_profile_id=user_id,
                         reflection_type="memory_triggered",
@@ -387,9 +386,16 @@ class SchedulerIntegration:
                         delay_seconds=5  # Small delay to allow memory to be fully processed
                     )
                     logger.info(f"Scheduled fallback memory-triggered reflection for user {user_id}")
+                    reflection_succeeded = True
+                
+                # Only set cooldown AFTER successful reflection attempt
+                # This prevents blocking retries if reflection fails
+                if reflection_succeeded:
+                    self._memory_trigger_cooldowns[cooldown_key] = now + cooldown_seconds
                     
             except Exception as e:
                 logger.error(f"Error triggering reflection for important memory: {str(e)}", exc_info=True)
+                # Don't set cooldown on error - allow retry on next event
             
     async def _setup_default_triggers(self):
         """Set up default event triggers."""

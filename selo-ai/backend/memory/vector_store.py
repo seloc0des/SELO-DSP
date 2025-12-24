@@ -73,7 +73,12 @@ class VectorStore:
         
         # GPU configuration
         self.device = self._setup_device()
-        self.gpu_available = self.device.type == 'cuda' if TORCH_AVAILABLE else False
+        # Check for None before accessing .type to prevent AttributeError when PyTorch unavailable
+        self.gpu_available = (
+            self.device is not None and 
+            TORCH_AVAILABLE and 
+            self.device.type == 'cuda'
+        )
         
         # Initialize storage structures
         self.index = None
