@@ -382,6 +382,11 @@ class ReflectionScheduler:
         if not self.scheduler_service:
             logger.warning("No scheduler service provided, cannot set up jobs")
             return
+        
+        # Skip if jobs are already registered to avoid re-registration spam
+        if self.registered_jobs.get("reflection_daily"):
+            logger.debug("Reflection scheduler jobs already registered, skipping setup")
+            return
             
         try:
             # Register scheduled reflection jobs
