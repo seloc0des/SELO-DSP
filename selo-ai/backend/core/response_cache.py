@@ -238,7 +238,6 @@ def get_response_cache() -> ResponseCache:
 
 async def clear_cache():
     """Clear the global cache."""
-    global _response_cache
     if _response_cache:
         _response_cache.cache.clear()
         logger.info("Response cache cleared")

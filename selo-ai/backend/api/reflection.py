@@ -25,7 +25,7 @@ router = APIRouter(
 )
 
 # Dependency to get reflection processor
-from ..api.dependencies import get_llm_router, get_reflection_processor
+from ..api.dependencies import get_llm_router, get_reflection_processor, get_conversation_repository
 from .security import is_system_or_admin
 
 # === Helper Functions ===

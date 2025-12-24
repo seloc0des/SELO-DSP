@@ -315,6 +315,7 @@ class StartupValidator:
         """Validate environment configuration and dependencies."""
         results = []
         warnings = []
+        errors = []
         
         try:
             # Check FAISS installation

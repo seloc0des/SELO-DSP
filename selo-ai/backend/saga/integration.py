@@ -6,7 +6,7 @@ multi-step operations with automatic compensation on failure.
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from .orchestrator import SagaOrchestrator
 from .handlers import (

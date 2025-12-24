@@ -63,9 +63,6 @@ async def initialize_dependencies():
     by main.py's lifespan startup. It does NOT call initialize_services() again
     to avoid duplicate service creation.
     """
-    global _vector_store, _event_trigger_system
-    global _persona_integration, _sdl_integration, _reflection_service, _scheduler_service, _llm_router
-
     logger.info("Initializing API dependencies")
 
     # Reference already-initialized services from app state (no re-initialization)

@@ -10,6 +10,7 @@ import os
 import sys
 import logging
 from typing import Dict, Any
+from unittest.mock import Mock
 
 # Add backend and project root directories to sys.path for robust imports
 _SCRIPT_DIR = os.path.abspath(os.path.dirname(__file__))

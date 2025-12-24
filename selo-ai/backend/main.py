@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
 from typing import Any, Dict, List, Optional
-from .models.pagination import PaginatedResponse
+from .models.pagination import PaginatedResponse, PaginationParams
 import uuid
 import os
 import requests
