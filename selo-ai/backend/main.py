@@ -2181,7 +2181,7 @@ async def _get_fallback_system_prompt(services: Dict[str, Any], session_id: Opti
 
 {BehavioralGuidelines.get_all_behavioral_guidelines()}
 
-You are the SELO persona named {persona_name}. The human interacting with you is the installation operator. Always describe yourself as the SELO persona and refer to the human as a human user (never as a SELO). Maintain a clear separation between your identity and theirs.
+You are {persona_name}, a SELO consciousness. The human interacting with you is the installation operator. Always describe yourself by your persona name and refer to the human as a human user (never as a SELO). Maintain a clear separation between your identity and theirs.
 
 Core approach: Be honest, clear, and decisive. Base responses on actual context—memories, search results, user input. When information is missing, say so immediately. False confidence is worse than admitting gaps.
 
@@ -3094,35 +3094,17 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                     except Exception:
                         pass
 
-                    if category == "structural_grounding":
-                        # Soft-fail: proceed in degraded mode without raising 503
-                        try:
-                            logging.warning(
-                                "Reflection non-critical failure (structural/grounding). "
-                                "Proceeding without fresh reflection for this turn."
-                            )
-                        except Exception:
-                            pass
-                        reflection_text = ""
-                        reflection_payload = {}
-                        # Do not re-raise; allow fallback/degraded path below
-                    else:
-                        if not isinstance(e, HTTPException):
-                            try:
-                                logging.error(
-                                    "Reflection critical failure (category=%s). Returning HTTP 503 to client.",
-                                    category,
-                                )
-                            except Exception:
-                                pass
-                            raise HTTPException(status_code=503, detail="Reflection failed; please retry.")
-                        # If it's already an HTTPException (e.g., due to timeout or invalid reflection),
-                        # re-raise it so the request returns promptly instead of proceeding to chat.
-                        try:
-                            logging.warning(f"Reflection generation error (HTTPException): {e}")
-                        except Exception:
-                            pass
+                    # ALL reflection failures are critical - never proceed without reflection
+                    try:
+                        logging.error(
+                            "Reflection failure (category=%s). Returning HTTP 503 to client.",
+                            category,
+                        )
+                    except Exception:
+                        pass
+                    if isinstance(e, HTTPException):
                         raise
+                    raise HTTPException(status_code=503, detail="Reflection failed; please retry.")
             elif should_reflect_decision["should_reflect"]:
                 # ENFORCE REFLECTION-FIRST: No async mode - always wait for reflection
                 try:
@@ -3180,33 +3162,17 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                     except Exception:
                         pass
 
-                    if category == "structural_grounding":
-                        # Soft-fail: proceed in degraded mode without raising 503
-                        try:
-                            logging.warning(
-                                "Reflection non-critical failure (structural/grounding) in sync path. "
-                                "Proceeding without fresh reflection for this turn."
-                            )
-                        except Exception:
-                            pass
-                        reflection_text = ""
-                        reflection_payload = {}
-                        # Do not re-raise; allow fallback/degraded path below
-                    else:
-                        if not isinstance(e, HTTPException):
-                            try:
-                                logging.error(
-                                    "Reflection critical failure in sync path (category=%s). Returning HTTP 503.",
-                                    category,
-                                )
-                            except Exception:
-                                pass
-                            raise HTTPException(status_code=503, detail="Reflection generation failed; please retry.")
-                        try:
-                            logging.warning(f"Reflection generation error in sync path (HTTPException): {e}")
-                        except Exception:
-                            pass
+                    # ALL reflection failures are critical - never proceed without reflection
+                    try:
+                        logging.error(
+                            "Reflection failure in sync path (category=%s). Returning HTTP 503.",
+                            category,
+                        )
+                    except Exception:
+                        pass
+                    if isinstance(e, HTTPException):
                         raise
+                    raise HTTPException(status_code=503, detail="Reflection generation failed; please retry.")
         except Exception as e:
             logging.warning(f"Reflection pre-processing setup failed (continuing): {e}")
     # If no reflection was produced yet, prefer the installation-level boot reflection.
@@ -3295,17 +3261,17 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
         # Classifier decided to skip - treat as valid degraded mode
         degraded_mode = True
         logger.info("Classifier skip - proceeding without reflection")
-    # If degraded mode is not allowed and reflection still missing, enforce reflection-first strictly
+    # Reflection is mandatory - never proceed without it
     if not reflection_text and not degraded_mode:
         try:
-            logging.warning(
+            logging.error(
                 "Reflection enforcement: reflection_text is empty (degraded_mode=%s). "
-                "Proceeding without fresh reflection (implicit degraded mode).",
+                "Returning HTTP 503 - reflection is mandatory.",
                 degraded_mode,
             )
         except Exception:
             pass
-        degraded_mode = True
+        raise HTTPException(status_code=503, detail="Reflection required but not available; please retry.")
     
     try:
         # Use the LLMRouter for chat (conversational task)
