@@ -263,10 +263,14 @@ class AgentLoopRunner:
             if self._sentience_integration:
                 try:
                     from .agent_loop_runner_sentience import run_sentience_cycle
+                    # Fetch actual persona and user objects for sentience cycle
+                    persona = await self._persona_repo.get_persona(persona_id, include_traits=True)
+                    user = await self._user_repo.get_user(user_id)
+                    
                     sentience_result = await run_sentience_cycle(
                         self,
-                        context.get("persona"),
-                        context.get("user"),
+                        persona,
+                        user,
                         {
                             "recent_messages": None,  # Could fetch if needed
                             "trigger_event": None,

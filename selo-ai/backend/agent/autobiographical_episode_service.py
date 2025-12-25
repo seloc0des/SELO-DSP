@@ -184,12 +184,13 @@ class AutobiographicalEpisodeService:
             return None
         
         # FIXED: Validate word count and reject episodes outside acceptable range
+        # Adjusted to accept what LLM reliably generates (90-280 words)
         word_count = len(narrative_text.split())
-        if word_count < 120:
-            logger.warning("Episode narrative too short (%d words, minimum 120). Rejecting.", word_count)
+        if word_count < 90:
+            logger.warning("Episode narrative too short (%d words, minimum 90). Rejecting.", word_count)
             return None
-        if word_count > 360:
-            logger.warning("Episode narrative too long (%d words, maximum 360). Rejecting.", word_count)
+        if word_count > 280:
+            logger.warning("Episode narrative too long (%d words, maximum 280). Rejecting.", word_count)
             return None
 
         try:

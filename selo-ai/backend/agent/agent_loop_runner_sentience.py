@@ -129,8 +129,8 @@ async def run_sentience_cycle(agent_loop_runner, persona, user, context: dict) -
     
     Args:
         agent_loop_runner: AgentLoopRunner instance
-        persona: Persona object
-        user: User object
+        persona: Persona object (can be None)
+        user: User object (can be None)
         context: Context dictionary
     
     Returns:
@@ -138,6 +138,15 @@ async def run_sentience_cycle(agent_loop_runner, persona, user, context: dict) -
     """
     if not agent_loop_runner._sentience_integration:
         return {"skipped": True, "reason": "sentience_integration_not_initialized"}
+    
+    # Validate required parameters
+    if not persona:
+        logger.warning("Sentience cycle skipped: persona is None")
+        return {"skipped": True, "reason": "persona_not_available"}
+    
+    if not user:
+        logger.warning("Sentience cycle skipped: user is None")
+        return {"skipped": True, "reason": "user_not_available"}
     
     try:
         sentience_result = await agent_loop_runner._sentience_integration.run_sentience_cycle(

@@ -534,6 +534,7 @@ class ReflectionProcessor:
 
     def _reflection_meets_schema(self, reflection_obj: dict, reflection_type: Optional[str] = None) -> bool:
         if not isinstance(reflection_obj, dict):
+            logger.debug("Schema check failed: reflection_obj is not a dict")
             return False
 
         reflection_obj = self._normalize_structured_fields(reflection_obj)
@@ -541,6 +542,7 @@ class ReflectionProcessor:
 
         content_val = reflection_obj.get("content", "")
         if not isinstance(content_val, str) or not content_val.strip():
+            logger.debug("Schema check failed: content field is missing or empty")
             return False
 
         word_count = count_words(content_val)
@@ -568,23 +570,30 @@ class ReflectionProcessor:
             return len(cleaned) == len(values)
 
         if not _valid_string_list(reflection_obj.get("themes", []), minimum=1, maximum=3):
+            logger.debug(f"Schema check failed: themes field invalid. Value: {reflection_obj.get('themes')}")
             return False
         if not _valid_string_list(reflection_obj.get("insights", []), minimum=1, maximum=3):
+            logger.debug(f"Schema check failed: insights field invalid. Value: {reflection_obj.get('insights')}")
             return False
         if not _valid_string_list(reflection_obj.get("actions", []), minimum=1, maximum=3):
+            logger.debug(f"Schema check failed: actions field invalid. Value: {reflection_obj.get('actions')}")
             return False
 
         emotional_state = reflection_obj.get("emotional_state")
         if not isinstance(emotional_state, dict):
+            logger.debug(f"Schema check failed: emotional_state is not a dict. Value: {emotional_state}")
             return False
         primary = emotional_state.get("primary")
         if not isinstance(primary, str) or not primary.strip():
+            logger.debug(f"Schema check failed: emotional_state.primary invalid. Value: {primary}")
             return False
         try:
             intensity = float(emotional_state.get("intensity"))
         except (TypeError, ValueError):
+            logger.debug(f"Schema check failed: emotional_state.intensity not a valid float. Value: {emotional_state.get('intensity')}")
             return False
         if not (0.0 <= intensity <= 1.0):
+            logger.debug(f"Schema check failed: emotional_state.intensity out of range. Value: {intensity}")
             return False
         secondary = emotional_state.get("secondary", [])
         if secondary in (None, ""):
