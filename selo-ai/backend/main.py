@@ -745,6 +745,11 @@ async def initialize_services():
     plan_repo = PlanStepRepository()
     episode_repo = AutobiographicalEpisodeRepository()
     meta_repo = MetaReflectionRepository()
+    
+    # Initialize relationship repositories
+    from .db.repositories.relationship import RelationshipRepository
+    relationship_repo = RelationshipRepository()
+    
     # Persist vector store to disk so FAISS index/metadata survive restarts
     vector_store_path = str(pathlib.Path(__file__).resolve().parent / "data" / "vector_store")
     vector_store = VectorStore(store_path=vector_store_path, llm_controller=llm_router)
