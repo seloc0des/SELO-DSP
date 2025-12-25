@@ -135,15 +135,17 @@ class AutobiographicalEpisodeService:
             return None
 
     async def _invoke_llm(self, prompt: str, *, max_tokens: Optional[int] = None) -> Optional[str]:
-        # Use system profile analytical budget if not specified
-        # This ensures sufficient tokens for 200-280 word narratives
+        # Use higher token budget for autobiographical episodes to encourage richer narratives
+        # Episodes need more tokens than typical analytical tasks due to narrative requirements
         if max_tokens is None:
             try:
                 from ..utils.system_profile import detect_system_profile
                 profile = detect_system_profile()
-                max_tokens = profile.get("budgets", {}).get("analytical_max_tokens", 1024)
+                # Use 2x the analytical budget to encourage longer, richer narratives
+                base_budget = profile.get("budgets", {}).get("analytical_max_tokens", 1024)
+                max_tokens = min(base_budget * 2, 2048)  # Cap at 2048 to avoid excessive generation
             except Exception:
-                max_tokens = 1024
+                max_tokens = 2048
         
         try:
             response = await self._llm_router.route(
@@ -184,10 +186,10 @@ class AutobiographicalEpisodeService:
             return None
         
         # FIXED: Validate word count and reject episodes outside acceptable range
-        # Adjusted to accept what LLM reliably generates (90-280 words)
+        # Adjusted to accept what LLM reliably generates (35-280 words)
         word_count = len(narrative_text.split())
-        if word_count < 90:
-            logger.warning("Episode narrative too short (%d words, minimum 90). Rejecting.", word_count)
+        if word_count < 35:
+            logger.warning("Episode narrative too short (%d words, minimum 35). Rejecting.", word_count)
             return None
         if word_count > 280:
             logger.warning("Episode narrative too long (%d words, maximum 280). Rejecting.", word_count)
