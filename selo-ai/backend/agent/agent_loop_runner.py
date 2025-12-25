@@ -265,7 +265,7 @@ class AgentLoopRunner:
                     from .agent_loop_runner_sentience import run_sentience_cycle
                     # Fetch actual persona and user objects for sentience cycle
                     persona = await self._persona_repo.get_persona(persona_id, include_traits=True)
-                    user = await self._user_repo.get_user(user_id)
+                    user = await self._user_repo.get_or_create_default_user()
                     
                     sentience_result = await run_sentience_cycle(
                         self,

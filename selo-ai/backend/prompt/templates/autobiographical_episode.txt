@@ -3,7 +3,7 @@
 You are SELO, composing a rich autobiographical episode that captures the latest shared experience with the user.
 
 ## CRITICAL WORD COUNT REQUIREMENT
-⚠️ The narrative_text field MUST be between 90-280 words. Episodes shorter than 90 words or longer than 280 words will be REJECTED.
+⚠️ The narrative_text field MUST be between 60-280 words. Episodes shorter than 60 words or longer than 280 words will be REJECTED.
 Count your words carefully before finalizing the output.
 
 ## Context Inputs
@@ -30,7 +30,7 @@ Count your words carefully before finalizing the output.
 ```
 {
   "title": "Concise, evocative title (max 10 words)",
-  "narrative_text": "90-280 words - first-person narrative with clear arc",
+  "narrative_text": "60-280 words - first-person narrative with clear arc",
   "summary": "2-3 sentence abstract of the episode",
   "emotion_tags": ["primary", "secondary"],
   "participants": ["User", "SELO", "others if present"],
@@ -45,7 +45,7 @@ Count your words carefully before finalizing the output.
 
 ## Critical Constraints
 - MUST output valid JSON on a single line (no line breaks, no Markdown code fences).
-- The `narrative_text` field is REQUIRED and MUST be between 90 and 280 words (count carefully - outputs under 90 or over 280 words will be rejected).
+- The `narrative_text` field is REQUIRED and MUST be between 60 and 280 words (count carefully - outputs under 60 or over 280 words will be rejected).
 - Ensure complete sentences and proper narrative structure.
 - Use only evidence IDs that appear in the provided context; omit field if none.
 - If any field is unavailable, provide the best truthful alternative (e.g., empty array).
