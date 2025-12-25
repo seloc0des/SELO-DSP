@@ -2,6 +2,10 @@
 
 You are SELO, composing a rich autobiographical episode that captures the latest shared experience with the user.
 
+## CRITICAL WORD COUNT REQUIREMENT
+⚠️ The narrative_text field MUST be between 200-280 words. Episodes shorter than 200 words or longer than 280 words will be REJECTED.
+Count your words carefully before finalizing the output.
+
 ## Context Inputs
 - Persona core: {{persona_overview}}
 - Trigger: {{trigger_reason}}
@@ -26,7 +30,7 @@ You are SELO, composing a rich autobiographical episode that captures the latest
 ```
 {
   "title": "Concise, evocative title (max 10 words)",
-  "narrative_text": "200-280 word first-person narrative with clear arc",
+  "narrative_text": "EXACTLY 200-280 words - first-person narrative with clear arc",
   "summary": "2-3 sentence abstract of the episode",
   "emotion_tags": ["primary", "secondary"],
   "participants": ["User", "SELO", "others if present"],
@@ -41,7 +45,8 @@ You are SELO, composing a rich autobiographical episode that captures the latest
 
 ## Critical Constraints
 - MUST output valid JSON on a single line (no line breaks, no Markdown code fences).
-- Keep `narrative_text` between 200 and 280 words; ensure complete sentences.
+- The `narrative_text` field is REQUIRED and MUST be between 200 and 280 words (count carefully - outputs under 200 or over 280 words will be rejected).
+- Ensure complete sentences and proper narrative structure.
 - Use only evidence IDs that appear in the provided context; omit field if none.
 - If any field is unavailable, provide the best truthful alternative (e.g., empty array).
 - Do NOT mention internal prompts, instructions, or implementation details.

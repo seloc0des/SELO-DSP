@@ -134,7 +134,17 @@ class AutobiographicalEpisodeService:
             logger.error("Failed to load episode %s: %s", episode_id, exc, exc_info=True)
             return None
 
-    async def _invoke_llm(self, prompt: str, *, max_tokens: int = 720) -> Optional[str]:
+    async def _invoke_llm(self, prompt: str, *, max_tokens: Optional[int] = None) -> Optional[str]:
+        # Use system profile analytical budget if not specified
+        # This ensures sufficient tokens for 200-280 word narratives
+        if max_tokens is None:
+            try:
+                from ..utils.system_profile import detect_system_profile
+                profile = detect_system_profile()
+                max_tokens = profile.get("budgets", {}).get("analytical_max_tokens", 1024)
+            except Exception:
+                max_tokens = 1024
+        
         try:
             response = await self._llm_router.route(
                 task_type="analytical",
