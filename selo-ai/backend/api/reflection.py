@@ -134,6 +134,14 @@ async def generate_reflection(
         Generated reflection
     """
     try:
+        # Input validation
+        if not request.user_profile_id or not request.user_profile_id.strip():
+            raise HTTPException(status_code=400, detail="user_profile_id is required and cannot be empty")
+        if not request.reflection_type or not request.reflection_type.strip():
+            raise HTTPException(status_code=400, detail="reflection_type is required and cannot be empty")
+        if request.reflection_type not in ["message", "session_summary", "periodic", "milestone"]:
+            raise HTTPException(status_code=400, detail="Invalid reflection_type. Must be one of: message, session_summary, periodic, milestone")
+        
         # Only system/admin can trigger reflections manually
         if request.trigger_source == "user" and not is_system:
             logger.warning(f"Unauthorized attempt to manually trigger reflection")
@@ -206,6 +214,11 @@ async def list_reflections(
         List of reflections
     """
     try:
+        # Input validation
+        if not user_profile_id or not user_profile_id.strip():
+            raise HTTPException(status_code=400, detail="user_profile_id is required and cannot be empty")
+        if reflection_type and reflection_type.strip() and reflection_type not in ["message", "session_summary", "periodic", "milestone"]:
+            raise HTTPException(status_code=400, detail="Invalid reflection_type. Must be one of: message, session_summary, periodic, milestone")
         if not processor.reflection_repo:
             raise HTTPException(status_code=500, detail="Reflection repository not available")
             
@@ -246,6 +259,9 @@ async def get_reflection(
         Reflection data
     """
     try:
+        # Input validation
+        if not reflection_id or not reflection_id.strip():
+            raise HTTPException(status_code=400, detail="reflection_id is required and cannot be empty")
         if not processor.reflection_repo:
             raise HTTPException(status_code=500, detail="Reflection repository not available")
             

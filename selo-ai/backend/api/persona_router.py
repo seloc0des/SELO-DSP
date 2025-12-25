@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from ..persona.integration import PersonaIntegration
 from ..db.repositories.user import UserRepository
 from .dependencies import get_persona_integration, get_llm_router
-from .dependencies import get_reflection_repository
+from .dependencies import get_reflection_repository, get_event_trigger_system
 from ..conversation.openings import generate_first_intro_from_directive
 from .security import require_system_key
 
@@ -73,6 +73,19 @@ def _invalidate_persona_cache() -> None:
     _persona_cache.clear()
     _persona_cache_ttl.clear()
     logger.debug("Persona cache invalidated")
+
+
+async def _setup_cache_invalidation_handler():
+    """Setup event handler to invalidate cache on persona evolution."""
+    try:
+        event_system = await get_event_trigger_system()
+        await event_system.register_handler(
+            event_type="persona.evolution.completed",
+            handler=lambda event_data, user_id: _invalidate_persona_cache()
+        )
+        logger.info("Registered cache invalidation handler for persona evolution events")
+    except Exception as e:
+        logger.warning(f"Failed to setup cache invalidation handler: {e}")
 
 
 # === Pydantic Models ===
@@ -140,6 +153,13 @@ async def ensure_default_persona(
     Ensure a user has a default persona, creating one if needed.
     """
     try:
+        # Input validation
+        if not request.user_id or not request.user_id.strip():
+            raise HTTPException(status_code=400, detail="user_id is required and cannot be empty")
+        if not request.name or not request.name.strip():
+            raise HTTPException(status_code=400, detail="name is required and cannot be empty")
+        if len(request.name.strip()) > 100:
+            raise HTTPException(status_code=400, detail="name cannot exceed 100 characters")
         # Log persona creation via router (for analytics)
         await llm_router.route(task_type="persona_prompt", prompt=f"Ensure default persona for {request.user_id}")
         result = await persona_integration.ensure_default_persona(
@@ -181,6 +201,10 @@ async def get_system_prompt(
     Get the system prompt for a persona.
     """
     try:
+        # Input validation
+        if not persona_id or not persona_id.strip():
+            raise HTTPException(status_code=400, detail="persona_id is required and cannot be empty")
+        
         # If a special token is provided, resolve to installation's default persona
         resolved_persona_id = persona_id
         if persona_id.lower() in {"default", "current"}:
@@ -234,6 +258,10 @@ async def get_persona_presentation(
     - first_intro_used: whether the one-time intro has already been shown in chat
     """
     try:
+        # Input validation
+        if not persona_id or not persona_id.strip():
+            raise HTTPException(status_code=400, detail="persona_id is required and cannot be empty")
+        
         # Resolve default/current tokens
         resolved_persona_id = persona_id
         user_repo = UserRepository()

@@ -844,6 +844,10 @@ async def initialize_services():
         episode_trigger_manager=episode_trigger_manager,
         event_system=None,  # Will be set after event_system is created
         config=agent_loop_config,
+        llm_router=llm_router,
+        reflection_repo=reflection_repo,
+        relationship_repo=relationship_repo,
+        conversation_repo=conversation_repo,
     )
     
     # Initialize or reuse Socket.IO server via registry

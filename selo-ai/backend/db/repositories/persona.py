@@ -1223,7 +1223,7 @@ class PersonaRepository:
             persona_dict = persona.to_dict() if hasattr(persona, "to_dict") else {
                 "description": getattr(persona, "description", ""),
                 "values": getattr(persona, "values", {}) or {},
-                "knowledge_domains": getattr(persona, "knowledge_domains", []) or [],
+                "expertise": getattr(persona, "expertise", {}) or {},
                 "communication_style": getattr(persona, "communication_style", {}) or {},
             }
 
@@ -1279,7 +1279,8 @@ class PersonaRepository:
         # Extract current state
         description = persona_dict.get("description", "")
         values = persona_dict.get("values", {})
-        knowledge_domains = persona_dict.get("knowledge_domains", [])
+        expertise = persona_dict.get("expertise", {})
+        expertise_domains = expertise.get("domains", []) if isinstance(expertise, dict) else []
         communication_style = persona_dict.get("communication_style", {})
         
         # Build evolution context
@@ -1309,7 +1310,7 @@ CRITICAL CONSTRAINTS:
 CURRENT PERSONA STATE:
 Description: {description}
 Values: {values}
-Knowledge Domains: {knowledge_domains}
+Expertise Domains: {expertise_domains}
 Communication Style: {communication_style}
 
 RECENT EVOLUTION HISTORY:

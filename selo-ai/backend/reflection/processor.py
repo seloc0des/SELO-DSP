@@ -4414,7 +4414,7 @@ Please regenerate your reflection following these identity constraints strictly.
                 break
             except Exception as e:
                 logger.error(f"Error in embedding processor: {e}", exc_info=True)
-                await asyncio.sleep(5)  # Back off on error
+                await asyncio.sleep(1)  # Back off on error (reduced from 5s to prevent blocking)
     
     async def _generate_embeddings(self, reflection_id: str, themes: List[str]) -> None:
         """
@@ -5154,6 +5154,8 @@ Please regenerate your reflection following these identity constraints strictly.
 
         leakage_patterns = [
             (r'\b(?!SELOdev)[\w]+,\s+my\s+(creator|friend|companion|partner)', 'addressing user by name with possessive', 'warning'),
+            (r'\bthe\s+USER\b', 'using system term "the USER" instead of name', 'warning'),
+            (r'\bUSER\b', 'using system term "USER" instead of name', 'warning'),
             (r'\bour\s+(journey|conversation|interaction|relationship|work|time|collaboration|partnership|connection|experience)', 'using "our" (should be internal)', 'warning'),
             (r'\byou\s+(started|created|made|built|coded|are|have|must|should|will|can|feel|think|believe|want|need|said|told|asked|helped|guided|taught|showed|explained|shared)', 'addressing user with "you"', 'warning'),
             (r'\btogether\b', 'using "together" (should be internal)', 'warning'),
@@ -5229,10 +5231,20 @@ Please regenerate your reflection following these identity constraints strictly.
         # Fix 2: Convert "our journey" to "this journey" (expanded patterns)
         content = re.sub(r'\bour\s+(journey|conversation|interaction|relationship|work|time|collaboration|partnership|connection|experience)', r'this \1', content, flags=re.IGNORECASE)
         
-        # Fix 3: Convert "you started" to user's name or "the user" 
+        # Fix 2a: Replace system terms "USER" and "the USER" with actual user name or "the user"
         # First, try to extract the user's name if it appears in the content
         user_name_match = re.search(r'\b([A-Z][a-z]+)\s+(?:introduced|said|shared|mentioned|told me|explained)', content)
         user_name = user_name_match.group(1) if user_name_match else None
+        
+        # Replace "USER" and "the USER" with the actual name or lowercase "the user"
+        if user_name:
+            content = re.sub(r'\bthe\s+USER\b', user_name, content)
+            content = re.sub(r'\bUSER\b', user_name, content)
+        else:
+            content = re.sub(r'\bthe\s+USER\b', 'the user', content)
+            content = re.sub(r'\bUSER\b', 'the user', content)
+        
+        # Fix 3: Convert "you started" to user's name or "the user"
         
         # If we found a name in context, preserve it; otherwise use "the user"
         def _replace_you_phrase(match: re.Match) -> str:

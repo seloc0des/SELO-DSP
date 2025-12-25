@@ -436,9 +436,9 @@ class PersonaIntegration:
         user_id: str,
         trigger_type: str,
         trigger_id: Optional[str] = None,
-        delay_seconds: int = 5
+        delay_seconds: int = 0
     ):
-        """Schedule persona evolution with a delay."""
+        """Schedule persona evolution with optional delay (default: immediate)."""
         try:
             # Create event data
             event_data = {

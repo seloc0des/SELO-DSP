@@ -16,6 +16,7 @@ if TYPE_CHECKING:  # pragma: no cover - type checking only
     from ..db.repositories.persona import PersonaRepository
     from ..db.repositories.user import UserRepository
     from ..scheduler.event_triggers import EventTriggerSystem
+    from ..agent.sentience_integration import SentienceIntegration
 
 
 logger = logging.getLogger("selo.agent.loop_runner")
@@ -77,6 +78,10 @@ class AgentLoopRunner:
         episode_trigger_manager: Optional[Any] = None,
         event_system: Optional["EventTriggerSystem"] = None,
         config: Optional[Dict[str, Any]] = None,
+        llm_router: Optional[Any] = None,
+        reflection_repo: Optional[Any] = None,
+        relationship_repo: Optional[Any] = None,
+        conversation_repo: Optional[Any] = None,
     ) -> None:
         self._config = self._build_config(config or {})
 
@@ -89,6 +94,10 @@ class AgentLoopRunner:
         self._episode_service = episode_service
         self._episode_trigger_manager = episode_trigger_manager
         self._event_system = event_system
+        self._llm_router = llm_router
+        self._reflection_repo = reflection_repo
+        self._relationship_repo = relationship_repo
+        self._conversation_repo = conversation_repo
 
         self._lock = asyncio.Lock()
         self._last_run_at: Optional[datetime] = None
@@ -103,6 +112,14 @@ class AgentLoopRunner:
         # Scheduler reference for dynamic rescheduling
         self._scheduler_service = None
         self._job_id: Optional[str] = None
+        
+        # Initialize sentience integration
+        self._sentience_integration: Optional["SentienceIntegration"] = None
+        try:
+            self._sentience_integration = self._initialize_sentience_integration()
+            logger.info("Sentience integration initialized successfully")
+        except Exception as e:
+            logger.warning(f"Failed to initialize sentience integration: {e}")
 
     @property
     def enabled(self) -> bool:
@@ -241,6 +258,39 @@ class AgentLoopRunner:
                 persona_id=persona_id,
                 affective_state=affective_state or {},
             )
+            
+            # Run sentience cycle if integration is available
+            if self._sentience_integration:
+                try:
+                    from .agent_loop_runner_sentience import run_sentience_cycle
+                    sentience_result = await run_sentience_cycle(
+                        self,
+                        context.get("persona"),
+                        context.get("user"),
+                        {
+                            "recent_messages": None,  # Could fetch if needed
+                            "trigger_event": None,
+                            "affective_state": affective_state
+                        }
+                    )
+                    
+                    if sentience_result.get("success"):
+                        summary["sentience_cycle"] = {
+                            "systems_executed": len(sentience_result.get("systems_executed", [])),
+                            "insights_generated": len(sentience_result.get("insights_generated", [])),
+                            "actions_taken": len(sentience_result.get("actions_taken", [])),
+                            "duration_seconds": sentience_result.get("cycle_duration_seconds", 0.0)
+                        }
+                        logger.info(
+                            f"Sentience cycle completed: "
+                            f"{summary['sentience_cycle']['systems_executed']} systems, "
+                            f"{summary['sentience_cycle']['insights_generated']} insights"
+                        )
+                    else:
+                        summary["sentience_cycle"] = {"skipped": True, "reason": sentience_result.get("reason", "unknown")}
+                except Exception as exc:
+                    logger.error(f"Sentience cycle failed: {exc}", exc_info=True)
+                    summary["sentience_cycle"] = {"error": str(exc)}
 
             pending_steps_after = await self._goal_manager.list_pending_steps(persona_id)
 
@@ -572,6 +622,15 @@ class AgentLoopRunner:
         self._consecutive_idle_runs = 0
         self._consecutive_active_runs = 0
         logger.info(f"Agent loop interval reset to base: {self.base_interval_seconds}s")
+    
+    def _initialize_sentience_integration(self):
+        """Initialize sentience integration systems."""
+        try:
+            from .agent_loop_runner_sentience import initialize_sentience_integration
+            return initialize_sentience_integration(self)
+        except Exception as e:
+            logger.error(f"Failed to initialize sentience integration: {e}", exc_info=True)
+            return None
 
     @staticmethod
     def _build_config(raw: Dict[str, Any]) -> Dict[str, Any]:

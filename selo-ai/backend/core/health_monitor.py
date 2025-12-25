@@ -149,7 +149,7 @@ class HealthMonitor:
                 break
             except Exception as e:
                 logger.error(f"Health monitoring error: {e}")
-                await asyncio.sleep(5)  # Short delay on error
+                await asyncio.sleep(2)  # Short delay on error (reduced from 5s)
                 
     async def run_all_checks(self) -> Dict[str, HealthCheck]:
         """Run all registered health checks."""

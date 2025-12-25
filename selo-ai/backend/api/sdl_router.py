@@ -82,6 +82,15 @@ async def create_learning(
 ):
     """Create a new learning entry."""
     try:
+        # Input validation
+        if not user_id or not user_id.strip():
+            raise HTTPException(status_code=400, detail="user_id is required and cannot be empty")
+        if not learning_req.content or not learning_req.content.strip():
+            raise HTTPException(status_code=400, detail="content is required and cannot be empty")
+        if not learning_req.domain or not learning_req.domain.strip():
+            raise HTTPException(status_code=400, detail="domain is required and cannot be empty")
+        if len(learning_req.content) > 10000:
+            raise HTTPException(status_code=400, detail="content cannot exceed 10000 characters")
         learning_data = {
             "user_id": user_id,
             "content": learning_req.content,
@@ -184,6 +193,13 @@ async def create_concept(
 ):
     """Create a new concept."""
     try:
+        # Input validation
+        if not user_id or not user_id.strip():
+            raise HTTPException(status_code=400, detail="user_id is required and cannot be empty")
+        if not concept_req.name or not concept_req.name.strip():
+            raise HTTPException(status_code=400, detail="concept name is required and cannot be empty")
+        if len(concept_req.name) > 200:
+            raise HTTPException(status_code=400, detail="concept name cannot exceed 200 characters")
         concept_data = {
             "user_id": user_id,
             "name": concept_req.name,
@@ -263,6 +279,13 @@ async def search_knowledge(
 ):
     """Search the knowledge base for relevant learnings."""
     try:
+        # Input validation
+        if not query or not query.strip():
+            raise HTTPException(status_code=400, detail="query is required and cannot be empty")
+        if not user_id or not user_id.strip():
+            raise HTTPException(status_code=400, detail="user_id is required and cannot be empty")
+        if len(query) > 1000:
+            raise HTTPException(status_code=400, detail="query cannot exceed 1000 characters")
         results = await sdl_integration.sdl_engine.search_knowledge(
             user_id=user_id,
             query=query,
