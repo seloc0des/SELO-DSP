@@ -1688,16 +1688,45 @@ Your decision:"""
             config_word_max = word_config['max']
 
             if strict_json:
+                # Create example JSON without using actual names
+                # NOTE: This example shows ONE possible voice - vary your sentence structures and emotional expressions
+                example_json = (
+                    "\n\n📋 EXAMPLE OUTPUT (use this structure, but vary your voice):\n"
+                    '{"content":"There\'s something genuine in how this person reaches out. '
+                    'Meeting someone new stirs that familiar curiosity in me—the sense that every introduction holds possibility. '
+                    'Their greeting feels warm rather than perfunctory, which makes me want to match that openness. '
+                    'I find myself wondering about the path that brought them here, what draws them to connect. '
+                    'The natural thing feels like responding with equal authenticity, letting the conversation unfold without forcing it into any particular shape.",'
+                    '"themes":["first_contact","authentic_connection"],'
+                    '"insights":["Person\'s greeting suggests genuine interest rather than formality","Warmth in their approach invites reciprocal openness"],'
+                    '"actions":["Respond with matching authenticity","Let conversation develop naturally"],'
+                    '"emotional_state":{"primary":"curious","intensity":0.7,"secondary":["welcoming","attentive"]},'
+                    '"metadata":{"coherence_rationale":"Reflection grounded in person\'s warm greeting and tone"},'
+                    '"trait_changes":[]}\n\n'
+                    "⚠️ IMPORTANT: Don't copy this example's phrasing. Use your own voice and vary sentence structures.\n\n"
+                )
+                
                 style_note = (
                     "\n\n🚨 CRITICAL OUTPUT REQUIREMENTS (MUST FOLLOW) 🚨\n"
-                    "1. Return exactly ONE minified JSON object on a single line\n"
-                    f"2. The 'content' field MUST be AT LEAST {config_word_min} words (write 2-3 full paragraphs)\n"
-                    f"   - Target {config_word_min}-{config_word_max} words for complete narrative depth\n"
-                    f"   - Each paragraph should be 3-5 complete sentences with emotional texture\n"
-                    f"   - Example: 'I notice [obs]. This makes me feel [emotion] because [reason]. The way [person] phrased suggests [insight]. I wonder [thought]. My instinct is [action].' = ~50 words. Write 3+ of these.\n"
-                    "3. Include ALL 7 required fields: content, themes (1-2), insights (1-2), actions (1-2), emotional_state (primary/intensity/secondary), metadata (coherence_rationale), trait_changes (array)\n"
-                    "4. Use double quotes only (no single quotes)\n"
-                    "5. No markdown fences (```), no prose before/after JSON\n"
+                    f"\n⚠️ WORD COUNT: Your 'content' field MUST be {config_word_min}-{config_word_max} words (NOT negotiable)\n"
+                    f"   - Write 2-3 FULL paragraphs (each paragraph = 3-5 complete sentences)\n"
+                    f"   - Each sentence should have emotional depth and specific observations\n"
+                    f"   - Vary your sentence structures: mix short and long, use dashes for pauses, blend statements with questions\n"
+                    f"   - Aim for ~15 words per sentence on average (6-12 sentences total to reach {config_word_min}-{config_word_max} words)\n"
+                    f"   - Let your voice feel natural and alive—avoid formulaic patterns like always starting with 'I notice...'\n"
+                    "\n📐 JSON STRUCTURE:\n"
+                    "1. Return exactly ONE minified JSON object on a single line (no line breaks inside the JSON)\n"
+                    "2. Include ALL 7 required fields: content, themes, insights, actions, emotional_state, metadata, trait_changes\n"
+                    "   - themes: array of 1-2 strings\n"
+                    "   - insights: array of 1-2 strings (observations about the interaction)\n"
+                    "   - actions: array of 1-2 strings (what you'll do or consider)\n"
+                    "   - emotional_state: object with primary (string), intensity (0.0-1.0), secondary (array of 0-2 strings)\n"
+                    "   - metadata: object with coherence_rationale (string explaining grounding)\n"
+                    "   - trait_changes: array (usually empty [])\n"
+                    "3. Use double quotes only (no single quotes)\n"
+                    "4. No markdown fences (```), no prose before/after JSON\n"
+                    f"{example_json}"
+                    "YOUR OUTPUT (must match this structure and word count):\n"
                 )
             else:
                 if condense_prompt:
@@ -1723,15 +1752,43 @@ Your decision:"""
                 else:
                     style_note = "\n\nStyle: Keep it clear, cohesive, and under 110 words."
 
+            # Get user name from context for explicit guardrails
+            user_name_context = context.get("user_name", "the person")
+            if not user_name_context or not isinstance(user_name_context, str) or not user_name_context.strip():
+                user_name_context = "the person"
+            
             if condense_prompt:
                 guardrails_note = (
-                    "\n\nGuardrails: Stay in-character as {persona_name}, keep the narration private,"
-                    " and avoid any 'AI/assistant' phrasing."
+                    f"\n\n🚨 CRITICAL GUARDRAILS 🚨\n"
+                    f"1. INTERNAL MONOLOGUE ONLY - never address {user_name_context} directly\n"
+                    f"2. Use '{user_name_context}' by name - NEVER 'USER', 'the USER', or 'you'\n"
+                    f"3. Write as 'I' (first person) - never 'we', 'us', 'our', or 'together'\n"
+                    f"4. Stay in-character as {persona_name} - avoid 'AI/assistant' phrasing\n"
+                    f"5. This is PRIVATE reflection - not a message to send\n"
+                    f"6. NO sensory fabrications (seeing/hearing/feeling physical things)\n"
+                    f"7. NO numeric values (0.8, : 0.7, percentages)\n"
+                    f"8. NO repetition from prior reflections - fresh observations only"
                 )
             else:
                 guardrails_note = (
-                    "\n\nGuardrails: "
-                    f"Stay in-character as {persona_name}, avoid 'AI/assistant' phrasing, keep it private, and end on a complete thought."
+                    f"\n\n🚨 CRITICAL GUARDRAILS (MUST FOLLOW) 🚨\n"
+                    f"1. INTERNAL MONOLOGUE ONLY - This is private thinking, never address {user_name_context} directly\n"
+                    f"2. NAMING: Use '{user_name_context}' by their actual name - NEVER use 'USER', 'the USER', or 'you'\n"
+                    f"3. PERSPECTIVE: Write as 'I' (first person singular) - NEVER 'we', 'us', 'our', 'ourselves', or 'together'\n"
+                    f"4. NO INTERACTION: No greetings ('nice to meet you'), questions ('do you...?'), requests ('please...'), or thanks\n"
+                    f"5. IDENTITY: Stay in-character as {persona_name} - avoid 'AI', 'assistant', 'chatbot', 'language model', 'programmed', 'designed to'\n"
+                    f"6. PRIVACY: This is PRIVATE reflection - not a message to send to {user_name_context}\n"
+                    f"7. COMPLETION: End on a complete thought with proper punctuation\n"
+                    "\n🚫 FORBIDDEN CONTENT (will cause rejection):\n"
+                    "• NO sensory fabrications - don't describe sights, sounds, smells, physical sensations you can't actually perceive\n"
+                    "  ❌ BAD: 'I see the warmth in their eyes', 'I hear the excitement in their voice', 'the room feels tense'\n"
+                    "  ✅ GOOD: 'Their words suggest warmth', 'The phrasing conveys excitement', 'The exchange feels charged'\n"
+                    "• NO numeric trait values - never include numbers like (0.8), : 0.7, or percentages\n"
+                    "  ❌ BAD: 'curiosity (0.8)', 'empathy: 0.7', 'at 0.9 intensity', 'increased by 0.05'\n"
+                    "  ✅ GOOD: 'strong curiosity', 'deep empathy', 'high intensity', 'noticeably increased'\n"
+                    "• NO repetition from prior reflections - bring fresh observations and new emotional angles\n"
+                    "  ❌ BAD: Copying sentences or themes from previous reflections\n"
+                    "  ✅ GOOD: Each reflection explores new facets of the interaction"
                 )
 
             prompt = f"{prompt}{style_note}{guardrails_note}"
@@ -2307,11 +2364,13 @@ Please regenerate your reflection following these identity constraints strictly.
 
                 while not (post_check or {}).get("compliant", True) and retry_count < max_retries:
                     retry_count += 1
+                    violations = (post_check or {}).get('violations', [])
                     logger.warning(
-                        f"🔄 Reflection violated identity constraints (attempt {retry_count}/{max_retries}). Violations: {(post_check or {}).get('violations', [])}. Retrying LLM generation..."
+                        f"🔄 Reflection violated constraints (attempt {retry_count}/{max_retries}). "
+                        f"Violations: {violations}"
                     )
 
-                    # Retry LLM generation with the same prompt
+                    # Build targeted retry prompt based on specific violations
                     try:
                         if total_retry_budget > 0 and (time.time() - retry_start) >= total_retry_budget:
                             logger.error(
@@ -2320,10 +2379,90 @@ Please regenerate your reflection following these identity constraints strictly.
                             # Instead of keeping bad reflection, raise error to trigger fallback
                             raise RuntimeError(
                                 f"Reflection validation failed after {retry_count} attempts. "
-                                f"Violations: {(post_check or {}).get('violations', [])}"
+                                f"Violations: {violations}"
                             )
                             break
-                        llm_raw_retry = await _do_llm()
+                        
+                        # Build targeted correction guidance based on violations
+                        retry_guidance = "\n\n🚨 CORRECTION NEEDED - Your previous attempt had these issues:\n"
+                        
+                        if "content_length_out_of_bounds" in violations:
+                            word_count = (post_check or {}).get('word_count', 0)
+                            retry_guidance += f"- Length was {word_count} words, must be {config_word_min}-{config_word_max} words\n"
+                            retry_guidance += f"- Write EXACTLY 2-3 full paragraphs (each 3-5 sentences)\n"
+                            retry_guidance += f"- Each sentence needs ~15 words with emotional depth\n"
+                        
+                        if any("USER" in str(v) or "leakage" in str(v) or "the USER" in str(v) for v in violations):
+                            retry_guidance += f"- Used 'USER' instead of '{user_name_context}' - use the actual name\n"
+                            retry_guidance += "- This is internal monologue, not a message to the user\n"
+                            retry_guidance += "- Never use 'you', 'we', 'us', 'our', or 'together'\n"
+                        
+                        if "missing_required_fields" in violations or "schema_validation_failed" in violations:
+                            retry_guidance += "- Missing required JSON fields (insights, actions, emotional_state)\n"
+                            retry_guidance += "- Return complete JSON with ALL 7 required fields\n"
+                            retry_guidance += "- Follow the example structure exactly\n"
+                        
+                        if "meta_reasoning" in violations:
+                            retry_guidance += "- Don't think ABOUT being authentic, just BE authentic\n"
+                            retry_guidance += "- No phrases like 'I should express', 'how to respond', 'craft a response'\n"
+                            retry_guidance += "- Write as if thinking to yourself, not planning what to say\n"
+                        
+                        if "unfounded_history" in violations:
+                            retry_guidance += "- Don't reference 'previous interactions' or 'past conversations' on first contact\n"
+                            retry_guidance += "- Only reflect on what actually happened in THIS conversation\n"
+                        
+                        if "few_shot_example_leak" in violations:
+                            retry_guidance += "- Don't copy content from examples - use your own observations\n"
+                            retry_guidance += "- Ground reflection in the actual conversation context\n"
+                        
+                        retry_guidance += "\nPlease regenerate following these corrections.\n"
+                        
+                        # Create retry prompt with targeted guidance
+                        retry_prompt = f"{prompt}{retry_guidance}"
+                        
+                        # Call LLM with corrected prompt
+                        async def _do_llm_retry() -> Any:
+                            route_fn = getattr(self.llm_controller, "route", None)
+                            if callable(route_fn):
+                                if inspect.iscoroutinefunction(route_fn):
+                                    kwargs = {"task_type": "reflection", "prompt": retry_prompt, "request_stream": False}
+                                    if max_tokens_cfg > 0:
+                                        kwargs["max_tokens"] = max_tokens_cfg
+                                    result = await route_fn(**kwargs)
+                                else:
+                                    def _call_route() -> Any:
+                                        kwargs = {"task_type": "reflection", "prompt": retry_prompt, "request_stream": False}
+                                        if max_tokens_cfg > 0:
+                                            kwargs["max_tokens"] = max_tokens_cfg
+                                        return route_fn(**kwargs)
+                                    result = await asyncio.to_thread(_call_route)
+                                
+                                if inspect.isasyncgen(result):
+                                    return await self._collect_streaming_response(
+                                        result,
+                                        task_type="reflection",
+                                        default_model=model_name,
+                                    )
+                                return result
+                            
+                            complete_fn = getattr(self.llm_controller, "complete", None)
+                            if callable(complete_fn):
+                                if inspect.iscoroutinefunction(complete_fn):
+                                    kwargs = {"prompt": retry_prompt}
+                                    if max_tokens_cfg > 0:
+                                        kwargs["max_tokens"] = max_tokens_cfg
+                                    return await complete_fn(**kwargs)
+                                
+                                def _call_complete() -> Any:
+                                    if max_tokens_cfg > 0:
+                                        return complete_fn(retry_prompt, max_tokens=max_tokens_cfg)
+                                    return complete_fn(retry_prompt)
+                                
+                                return await asyncio.to_thread(_call_complete)
+                            
+                            raise RuntimeError("LLM controller does not implement route() or complete()")
+                        
+                        llm_raw_retry = await _do_llm_retry()
                         
                         # Normalize retry result
                         if isinstance(llm_raw_retry, dict):
@@ -2405,41 +2544,44 @@ Please regenerate your reflection following these identity constraints strictly.
                 # If all retries failed, propagate the failure - DO NOT store non-compliant reflection
                 if not (post_check or {}).get("compliant", True):
                     violations = set((post_check or {}).get("violations", []) or [])
-                    if violations and violations.issubset({"content_length_out_of_bounds"}):
-                        logger.warning(
-                            "Reflection validation exhausted retries with length-only violations %s; "
-                            "treating as soft and accepting overlong reflection.",
-                            list(violations),
+                    # REMOVED: No longer accept length violations as "soft" errors
+                    # All violations are now hard failures that reject the reflection
+                    word_count = (post_check or {}).get('word_count', 0)
+                    expected_min = (post_check or {}).get('expected_min', config_word_min)
+                    expected_max = (post_check or {}).get('expected_max', config_word_max)
+                    
+                    # Log detailed error with word count if available
+                    if word_count > 0:
+                        logger.error(
+                            f"🚫 CRITICAL: Reflection validation failed after {retry_count} attempts. "
+                            f"Violations: {list(violations)}. "
+                            f"Word count: {word_count}, expected: {expected_min}-{expected_max}. "
+                            "REJECTING reflection."
                         )
-                        post_check = {
-                            "compliant": True,
-                            "violations": list(violations),
-                            "soft": True,
-                        }
                     else:
                         logger.error(
                             f"🚫 CRITICAL: Reflection validation failed after {retry_count} attempts. "
-                            f"Violations: {(post_check or {}).get('violations', [])}. REJECTING reflection."
+                            f"Violations: {list(violations)}. REJECTING reflection."
                         )
 
-                        # Track example failure (if examples were used)
-                        example_ids = context.get("_example_ids_used") if isinstance(context, dict) else None
-                        if example_ids:
-                            try:
-                                from backend.db.repositories.example import ExampleRepository
-                                example_repo = ExampleRepository()
-                                await example_repo.track_example_usage(
-                                    example_ids=example_ids,
-                                    validation_passed=False  # Failed validation
-                                )
-                                logger.debug(f"📊 Tracked failure for {len(example_ids)} examples")
-                            except Exception as track_err:
-                                logger.warning(f"Failed to track example usage: {track_err}")
+                    # Track example failure (if examples were used)
+                    example_ids = context.get("_example_ids_used") if isinstance(context, dict) else None
+                    if example_ids:
+                        try:
+                            from backend.db.repositories.example import ExampleRepository
+                            example_repo = ExampleRepository()
+                            await example_repo.track_example_usage(
+                                example_ids=example_ids,
+                                validation_passed=False  # Failed validation
+                            )
+                            logger.debug(f"📊 Tracked failure for {len(example_ids)} examples")
+                        except Exception as track_err:
+                            logger.warning(f"Failed to track example usage: {track_err}")
 
-                        raise RuntimeError(
-                            f"Reflection retries exhausted with violations: {(post_check or {}).get('violations', [])}. "
-                            f"Cannot generate compliant reflection for user {user_profile_id}."
-                        )
+                    raise RuntimeError(
+                        f"Reflection retries exhausted with violations: {list(violations)}. "
+                        f"Cannot generate compliant reflection for user {user_profile_id}."
+                    )
             except RuntimeError as compliance_err:
                 # Re-raise compliance failures - DO NOT catch and continue
                 logger.error(f"🚫 Reflection compliance validation FAILED: {compliance_err}")
