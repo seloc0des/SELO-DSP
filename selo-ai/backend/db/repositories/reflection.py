@@ -552,6 +552,53 @@ class ReflectionRepository:
         if not user_id:
             return None
         return self._relationship_answer_audit_cache.get(user_id)
+    
+    async def get_recent_reflections(
+        self,
+        persona_id: str,
+        limit: int = 30,
+        hours: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get recent reflections for a persona.
+        
+        Args:
+            persona_id: Persona/user profile ID to get reflections for
+            limit: Maximum number of reflections to return
+            hours: Optional filter to only include reflections from last N hours
+            
+        Returns:
+            List of recent reflections ordered by created_at descending
+        """
+        try:
+            async with get_session(self.db_session) as session:
+                query = select(Reflection).where(
+                    Reflection.user_profile_id == persona_id
+                )
+                
+                # Apply time filter if specified
+                if hours is not None:
+                    cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+                    query = query.where(Reflection.created_at >= cutoff_time)
+                
+                # Order by most recent first and apply limit
+                query = query.order_by(desc(Reflection.created_at)).limit(limit)
+                
+                result = await session.execute(query)
+                reflections = result.scalars().all()
+                
+                # Convert to dictionaries and cache
+                return await self._format_reflection_list(reflections)
+                
+        except Exception as e:
+            logger.error(f"Error getting recent reflections for {persona_id}: {str(e)}", exc_info=True)
+            # Fallback to cache
+            cached = [
+                r for r in self._reflections_cache.values()
+                if r.get("user_profile_id") == persona_id
+            ]
+            cached.sort(key=lambda r: r.get("created_at", 0), reverse=True)
+            return cached[:limit]
 
     async def get_relationship_question_awaiting_response(
         self,

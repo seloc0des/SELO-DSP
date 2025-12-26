@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -333,3 +333,69 @@ class GoalManager:
                 logger.debug(f"Goal completion episode trigger failed: {exc}")
         
         return updated_goal
+    
+    async def get_active_goals(
+        self,
+        persona_id: str,
+    ) -> List[Dict[str, Any]]:
+        """Get all active goals for a persona.
+        
+        Args:
+            persona_id: Persona identifier
+            
+        Returns:
+            List of active goal dictionaries
+        """
+        return await self._goal_repo.list_goals_by_status(
+            persona_id=persona_id,
+            statuses=["active", "in_progress", "pending"]
+        )
+    
+    async def get_recently_completed_goals(
+        self,
+        persona_id: str,
+        hours: int = 24,
+    ) -> List[Dict[str, Any]]:
+        """Get recently completed goals for a persona.
+        
+        Args:
+            persona_id: Persona identifier
+            hours: Number of hours to look back (default: 24)
+            
+        Returns:
+            List of recently completed goal dictionaries
+        """
+        try:
+            # Get all completed goals
+            completed_goals = await self._goal_repo.list_goals_by_status(
+                persona_id=persona_id,
+                statuses=["completed"]
+            )
+            
+            # Filter by completion time
+            cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+            recent_completed = []
+            
+            for goal in completed_goals:
+                completed_at = goal.get("completed_at")
+                if completed_at:
+                    # Handle both datetime and string formats
+                    if isinstance(completed_at, str):
+                        try:
+                            completed_at = datetime.fromisoformat(completed_at.replace('Z', '+00:00'))
+                        except Exception:
+                            continue
+                    
+                    if isinstance(completed_at, datetime):
+                        # Ensure timezone aware
+                        if completed_at.tzinfo is None:
+                            completed_at = completed_at.replace(tzinfo=timezone.utc)
+                        
+                        if completed_at >= cutoff_time:
+                            recent_completed.append(goal)
+            
+            return recent_completed
+            
+        except Exception as e:
+            logger.error(f"Error getting recently completed goals: {str(e)}", exc_info=True)
+            return []

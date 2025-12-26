@@ -13,7 +13,7 @@ Architecture:
 
 import json
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
@@ -217,3 +217,29 @@ class UserRepository:
         except Exception as e:
             self.logger.error(f"Error getting installation user ID: {str(e)}", exc_info=True)
             return None
+    
+    async def get_active_users(self, session: Optional[AsyncSession] = None) -> List[User]:
+        """
+        Get all active users.
+        For single-user SELO AI installations, this returns a list with the single user.
+        
+        Args:
+            session: Optional database session
+            
+        Returns:
+            List[User]: List containing the active user(s)
+        """
+        async with get_session(session) as db:
+            return await self._get_active_users_impl(db)
+    
+    async def _get_active_users_impl(self, session: AsyncSession) -> List[User]:
+        """Implementation of get_active_users."""
+        try:
+            result = await session.execute(
+                select(User).where(User.is_active == True)
+            )
+            users = result.scalars().all()
+            return list(users)
+        except Exception as e:
+            self.logger.error(f"Error getting active users: {str(e)}", exc_info=True)
+            return []

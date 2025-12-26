@@ -550,11 +550,15 @@ class ReflectionProcessor:
         word_config = self.get_type_word_bounds(reflection_type)
         min_words = word_config['min']
         max_words = word_config['max']
-        if word_count < min_words or word_count > max_words:
+        
+        # Apply 5-word tolerance band for near-misses
+        TOLERANCE = 5
+        if word_count < (min_words - TOLERANCE) or word_count > (max_words + TOLERANCE):
             logger.debug(
-                "Reflection content length outside %s-%s range during schema check: %s words",
+                "Reflection content length outside %s-%s range (with %s-word tolerance) during schema check: %s words",
                 min_words,
                 max_words,
+                TOLERANCE,
                 word_count,
             )
             return False
@@ -2232,10 +2236,31 @@ Please regenerate your reflection following these identity constraints strictly.
                         return {"compliant": False, "violations": ["missing_recent_conversation"]}
 
                     word_count = count_words(text)
-                    if word_count < config_word_min or word_count > config_word_max:
+                    
+                    # Apply 5-word tolerance band for near-misses
+                    TOLERANCE = 5
+                    hard_min = config_word_min - TOLERANCE
+                    hard_max = config_word_max + TOLERANCE
+                    
+                    if word_count < hard_min or word_count > hard_max:
+                        # Hard failure: significantly out of range
                         logger.warning(
-                            f"Length: {word_count} words (expected {config_word_min}-{config_word_max}). "
-                            "Treating as soft length guard (content_length_out_of_bounds); reflection will still be used."
+                            f"Length: {word_count} words (expected {config_word_min}-{config_word_max}, tolerance ±{TOLERANCE}). "
+                            "Hard length violation - will retry."
+                        )
+                        return {
+                            "compliant": False,
+                            "violations": ["content_length_out_of_bounds"],
+                            "soft": False,
+                            "word_count": word_count,
+                            "expected_min": config_word_min,
+                            "expected_max": config_word_max,
+                        }
+                    elif word_count < config_word_min or word_count > config_word_max:
+                        # Soft failure: within tolerance band
+                        logger.info(
+                            f"Length: {word_count} words (expected {config_word_min}-{config_word_max}, within ±{TOLERANCE} tolerance). "
+                            "Accepting with soft warning."
                         )
                         return {
                             "compliant": False,
@@ -2364,10 +2389,24 @@ Please regenerate your reflection following these identity constraints strictly.
 
                 while not (post_check or {}).get("compliant", True) and retry_count < max_retries:
                     retry_count += 1
-                    violations = (post_check or {}).get('violations', [])
+                    violations = set((post_check or {}).get('violations', []) or [])
+                    is_soft = (post_check or {}).get("soft", False)
+                    
+                    # Check if this is a soft violation we can accept (within tolerance band)
+                    if is_soft and violations == {"content_length_out_of_bounds"}:
+                        word_count = (post_check or {}).get('word_count', 0)
+                        expected_min = (post_check or {}).get('expected_min', config_word_min)
+                        expected_max = (post_check or {}).get('expected_max', config_word_max)
+                        logger.warning(
+                            f"✅ Accepting reflection with soft length violation: "
+                            f"{word_count} words (expected {expected_min}-{expected_max}, within ±5 tolerance)"
+                        )
+                        # Exit retry loop and accept the reflection
+                        break
+                    
                     logger.warning(
                         f"🔄 Reflection violated constraints (attempt {retry_count}/{max_retries}). "
-                        f"Violations: {violations}"
+                        f"Violations: {list(violations)}"
                     )
 
                     # Build targeted retry prompt based on specific violations
@@ -2541,11 +2580,9 @@ Please regenerate your reflection following these identity constraints strictly.
                         logger.error(f"Retry {retry_count} failed with error: {retry_err}")
                         break
                 
-                # If all retries failed, propagate the failure - DO NOT store non-compliant reflection
+                # If all retries failed, check if violations remain
                 if not (post_check or {}).get("compliant", True):
                     violations = set((post_check or {}).get("violations", []) or [])
-                    # REMOVED: No longer accept length violations as "soft" errors
-                    # All violations are now hard failures that reject the reflection
                     word_count = (post_check or {}).get('word_count', 0)
                     expected_min = (post_check or {}).get('expected_min', config_word_min)
                     expected_max = (post_check or {}).get('expected_max', config_word_max)

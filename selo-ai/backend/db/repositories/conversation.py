@@ -7,7 +7,7 @@ for SELO's long-term continuity and growth.
 
 import logging
 from typing import Optional, Dict, Any, List
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, desc, asc, func
 from sqlalchemy.orm import selectinload
@@ -482,4 +482,74 @@ class ConversationRepository:
             
         except Exception as e:
             self.logger.error(f"Error in list_conversations_impl: {str(e)}", exc_info=True)
+            return []
+    
+    async def get_recent_messages(
+        self,
+        user_id: str,
+        limit: int = 50,
+        hours: Optional[int] = None,
+        session: Optional[AsyncSession] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get recent messages for a user across all conversations.
+        
+        Args:
+            user_id: User identifier
+            limit: Maximum number of messages to return
+            hours: Optional filter to only include messages from last N hours
+            session: Optional database session
+            
+        Returns:
+            List of recent messages ordered by timestamp descending
+        """
+        async with get_session(session) as db:
+            return await self._get_recent_messages_impl(user_id, limit, hours, db)
+    
+    async def _get_recent_messages_impl(
+        self,
+        user_id: str,
+        limit: int,
+        hours: Optional[int],
+        session: AsyncSession
+    ) -> List[Dict[str, Any]]:
+        """Implementation of get_recent_messages."""
+        try:
+            # Build query to get messages from user's conversations
+            query = (
+                select(ConversationMessage)
+                .join(Conversation, ConversationMessage.conversation_id == Conversation.id)
+                .where(Conversation.user_id == user_id)
+            )
+            
+            # Apply time filter if specified
+            if hours is not None:
+                cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+                query = query.where(ConversationMessage.timestamp >= cutoff_time)
+            
+            # Order by most recent first and apply limit
+            query = query.order_by(desc(ConversationMessage.timestamp)).limit(limit)
+            
+            result = await session.execute(query)
+            messages = result.scalars().all()
+            
+            # Convert to dictionaries
+            message_list = []
+            for msg in messages:
+                message_list.append({
+                    "id": str(msg.id),
+                    "conversation_id": msg.conversation_id,
+                    "role": msg.role,
+                    "content": msg.content,
+                    "timestamp": self._iso_utc(msg.timestamp),
+                    "model_used": msg.model_used,
+                    "processing_time": msg.processing_time,
+                    "reflection_triggered": msg.reflection_triggered,
+                    "message_index": msg.message_index
+                })
+            
+            return message_list
+            
+        except Exception as e:
+            self.logger.error(f"Error getting recent messages for {user_id}: {str(e)}", exc_info=True)
             return []

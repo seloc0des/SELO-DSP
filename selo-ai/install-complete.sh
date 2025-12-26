@@ -924,11 +924,11 @@ EOF
   fi
 
   if ! grep -q '^REFLECTION_WORD_MIN=' "$be_env"; then
-    echo "REFLECTION_WORD_MIN=${TIER_REFLECTION_WORD_MIN:-100}" >> "$be_env"
+    echo "REFLECTION_WORD_MIN=${TIER_REFLECTION_WORD_MIN:-90}" >> "$be_env"
   fi
 
   if ! grep -q '^REFLECTION_WORD_MAX=' "$be_env"; then
-    echo "REFLECTION_WORD_MAX=${TIER_REFLECTION_WORD_MAX:-150}" >> "$be_env"
+    echo "REFLECTION_WORD_MAX=${TIER_REFLECTION_WORD_MAX:-180}" >> "$be_env"
   fi
 
   if ! grep -q '^REFLECTION_TEMPERATURE=' "$be_env"; then
@@ -1121,9 +1121,9 @@ finalize_service_env() {
   
   # Set word count validation limit based on hardware tier
   if sudo grep -q '^REFLECTION_WORD_MAX=' "$svc_env"; then
-    sudo sed -i -E "s|^REFLECTION_WORD_MAX=.*|REFLECTION_WORD_MAX=${TIER_REFLECTION_WORD_MAX:-150}|" "$svc_env" || true
+    sudo sed -i -E "s|^REFLECTION_WORD_MAX=.*|REFLECTION_WORD_MAX=${TIER_REFLECTION_WORD_MAX:-180}|" "$svc_env" || true
   else
-    echo "REFLECTION_WORD_MAX=${TIER_REFLECTION_WORD_MAX:-150}" | sudo tee -a "$svc_env" >/dev/null
+    echo "REFLECTION_WORD_MAX=${TIER_REFLECTION_WORD_MAX:-180}" | sudo tee -a "$svc_env" >/dev/null
   fi
   
   # Set Reports directory path for boot directives
@@ -1144,9 +1144,9 @@ finalize_service_env() {
     fi
     # Set word count validation limit based on hardware tier
     if grep -q '^REFLECTION_WORD_MAX=' "$SCRIPT_DIR/backend/.env"; then
-      sed -i -E "s|^REFLECTION_WORD_MAX=.*|REFLECTION_WORD_MAX=${TIER_REFLECTION_WORD_MAX:-150}|" "$SCRIPT_DIR/backend/.env" || true
+      sed -i -E "s|^REFLECTION_WORD_MAX=.*|REFLECTION_WORD_MAX=${TIER_REFLECTION_WORD_MAX:-180}|" "$SCRIPT_DIR/backend/.env" || true
     else
-      echo "REFLECTION_WORD_MAX=${TIER_REFLECTION_WORD_MAX:-150}" >> "$SCRIPT_DIR/backend/.env"
+      echo "REFLECTION_WORD_MAX=${TIER_REFLECTION_WORD_MAX:-180}" >> "$SCRIPT_DIR/backend/.env"
     fi
     # Mirror reflection temperature override (align with processing layer at 0.35)
     if grep -q '^REFLECTION_TEMPERATURE=' "$SCRIPT_DIR/backend/.env"; then
