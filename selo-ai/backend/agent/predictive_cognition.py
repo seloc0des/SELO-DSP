@@ -382,12 +382,13 @@ Output as JSON array:
 [{{"topic": "...", "confidence": 0.0, "reasoning": "...", "requires_web_search": false, "requires_memory_recall": false}}]
 """
             
-            response = await self.llm_router.generate(
+            result = await self.llm_router.route(
+                task_type="analytical",
                 prompt=prompt,
-                model_type="analytical",
                 max_tokens=400,
                 temperature=0.7
             )
+            response = result.get('content', '') if isinstance(result, dict) else str(result)
             
             # Parse JSON response
             predictions = self._parse_topic_predictions(response)

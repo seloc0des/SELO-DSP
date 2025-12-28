@@ -476,8 +476,10 @@ class SDLEngine:
         )
         
         try:
+            # Extract content from router response dict
+            content = response.get('content', '') if isinstance(response, dict) else str(response)
             # Parse and validate learnings
-            learnings = json.loads(response) if isinstance(response, str) else response
+            learnings = json.loads(content) if isinstance(content, str) else content
             
             # Ensure it's a list
             if not isinstance(learnings, list):
@@ -563,8 +565,10 @@ class SDLEngine:
         )
         
         try:
+            # Extract content from router response dict
+            content = response.get('content', '') if isinstance(response, dict) else str(response)
             # Parse and validate learnings
-            learnings = json.loads(response) if isinstance(response, str) else response
+            learnings = json.loads(content) if isinstance(content, str) else content
             
             # Ensure it's a list
             if not isinstance(learnings, list):
@@ -684,8 +688,10 @@ class SDLEngine:
         )
         
         try:
+            # Extract content from router response dict
+            content = response.get('content', '') if isinstance(response, dict) else str(response)
             # Parse response
-            consolidated = json.loads(response) if isinstance(response, str) else response
+            consolidated = json.loads(content) if isinstance(content, str) else content
             return consolidated
         except Exception as e:
             logger.error(f"Error parsing consolidation from LLM: {str(e)}", exc_info=True)
@@ -735,8 +741,10 @@ class SDLEngine:
         )
         
         try:
+            # Extract content from router response dict
+            content = response.get('content', '') if isinstance(response, dict) else str(response)
             # Parse response
-            meta_learning = json.loads(response) if isinstance(response, str) else response
+            meta_learning = json.loads(content) if isinstance(content, str) else content
             return meta_learning
         except Exception as e:
             logger.error(f"Error parsing meta-learning from LLM: {str(e)}", exc_info=True)

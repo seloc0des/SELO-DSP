@@ -379,8 +379,10 @@ class ConceptMapper:
         )
         
         try:
+            # Extract content from router response dict
+            content = response.get('content', '') if isinstance(response, dict) else str(response)
             # Parse and validate relationships
-            relationships = json.loads(response) if isinstance(response, str) else response
+            relationships = json.loads(content) if isinstance(content, str) else content
             
             # Ensure it's a list
             if not isinstance(relationships, list):
@@ -491,8 +493,10 @@ class ConceptMapper:
         )
         
         try:
+            # Extract content from router response dict
+            content = response.get('content', '') if isinstance(response, dict) else str(response)
             # Parse response
-            reorganization = json.loads(response) if isinstance(response, str) else response
+            reorganization = json.loads(content) if isinstance(content, str) else content
             return reorganization
         except Exception as e:
             logger.error(f"Error parsing reorganization from LLM: {str(e)}", exc_info=True)
@@ -549,8 +553,10 @@ class ConceptMapper:
         )
         
         try:
+            # Extract content from router response dict
+            content = response.get('content', '') if isinstance(response, dict) else str(response)
             # Parse response
-            summary = json.loads(response) if isinstance(response, str) else response
+            summary = json.loads(content) if isinstance(content, str) else content
             return summary
         except Exception as e:
             logger.error(f"Error parsing concept summary from LLM: {str(e)}", exc_info=True)

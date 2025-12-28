@@ -4043,7 +4043,7 @@ async def list_reflections_paginated(
     size: int = Query(20, ge=1, le=100, description="Items per page"),
     reflection_type: Optional[str] = Query(None, description="Filter by reflection type"),
     sort_by: str = Query("created_at", description="Sort field"),
-    sort_order: str = Query("desc", regex="^(asc|desc)$", description="Sort order")
+    sort_order: str = Query("desc", pattern="^(asc|desc)$", description="Sort order")
 ):
     """Get paginated list of reflections for a user."""
     try:
@@ -4097,7 +4097,7 @@ async def list_conversations_paginated(
     page: int = Query(1, ge=1, description="Page number"),
     size: int = Query(20, ge=1, le=100, description="Items per page"),
     sort_by: str = Query("last_message_at", description="Sort field"),
-    sort_order: str = Query("desc", regex="^(asc|desc)$", description="Sort order")
+    sort_order: str = Query("desc", pattern="^(asc|desc)$", description="Sort order")
 ):
     """Get paginated list of conversations for a user."""
     try:
@@ -4171,7 +4171,7 @@ async def list_conversation_messages_paginated(
     conversation_id: str,
     page: int = Query(1, ge=1, description="Page number"),
     size: int = Query(50, ge=1, le=200, description="Items per page"),
-    sort_order: str = Query("asc", regex="^(asc|desc)$", description="Sort order")
+    sort_order: str = Query("asc", pattern="^(asc|desc)$", description="Sort order")
 ):
     """Get paginated list of messages for a conversation."""
     try:

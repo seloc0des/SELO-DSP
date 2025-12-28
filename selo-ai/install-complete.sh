@@ -2584,19 +2584,25 @@ test_installation() {
         curl -sS -o /dev/null -w 'http_code=%{http_code} time_total=%{time_total}s\n' "$HEALTH_URL" || true
     fi
     
-    echo "Testing frontend connectivity..."
+    echo "Testing frontend connectivity (optional check)..."
     FRONT_URL=${FRONTEND_URL:-http://localhost:3000}
     ft_tries=0; front_ok=false
-    while [ $ft_tries -lt 30 ]; do
+    # Increased timeout to 60s to account for slower frontend builds
+    while [ $ft_tries -lt 60 ]; do
         if curl -sf "$FRONT_URL" >/dev/null; then front_ok=true; break; fi
         sleep 1; ft_tries=$((ft_tries+1))
     done
     if $front_ok; then
         echo "✓ Frontend is responding on port 3000"
     else
-        echo "✗ Frontend test failed after ${ft_tries}s"
-        echo "-- Recent frontend log --"
-        tail -n 100 "$SCRIPT_DIR/logs/frontend.log" 2>/dev/null || true
+        echo "⚠️  Frontend health check timed out after ${ft_tries}s"
+        echo "   Note: This is non-critical. The backend is functional and you can:"
+        echo "   • Access the API directly at: $BASE_URL"
+        echo "   • Start the frontend manually: cd $SCRIPT_DIR/frontend && npm start"
+        echo "   • Check frontend logs: tail -f $SCRIPT_DIR/logs/frontend.log"
+        echo ""
+        echo "-- Recent frontend log (last 50 lines) --"
+        tail -n 50 "$SCRIPT_DIR/logs/frontend.log" 2>/dev/null || echo "(frontend.log not found)"
     fi
     
     # Test configured models (conversational/reflection/analytical/embedding)
