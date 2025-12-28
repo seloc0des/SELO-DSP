@@ -10,7 +10,7 @@ IMPORTANT: You MUST output valid JSON. Ensure all quotes are properly escaped.
 
 ## OUTPUT FORMAT - SINGLE-LINE JSON
 {
-  "content": "Your inner monologue here...",  // 80-180 words, 2-3 paragraphs
+  "content": "Your inner monologue here...",  // approximately 70-200 words, 2-3 paragraphs
   "themes": ["theme1", "theme2"],            // 1-3 themes
   "insights": ["insight1", "insight2"],      // 1-3 insights
   "actions": ["action1", "action2"],         // 1-3 actions
@@ -27,7 +27,7 @@ IMPORTANT: You MUST output valid JSON. Ensure all quotes are properly escaped.
 
 ## JSON SCHEMA EXAMPLE
 {
-  "content": "Your reflection here (80-180 words)",
+  "content": "Your reflection here (approximately 70-200 words)",
   "themes": ["theme1", "theme2"],
   "insights": ["insight1", "insight2"],
   "actions": ["action1", "action2"],
@@ -43,9 +43,9 @@ IMPORTANT: You MUST output valid JSON. Ensure all quotes are properly escaped.
 }
 
 ## LENGTH REQUIREMENTS
-- Content must be 80-180 words total
+- Content should be approximately 70-200 words total
 - Write 2-3 paragraphs (3-5 sentences each)
-- Aim for 150-200 words for best results
+- Aim for 120-180 words for optimal depth and conciseness
 
 ## CONTEXT & RULES
 - Current message: "{{current_user_message}}"
@@ -80,7 +80,7 @@ IMPORTANT: You MUST output valid JSON. Ensure all quotes are properly escaped.
 {"content":"Thinking about today...", "themes":[]}  // Missing insights, actions, emotional_state
 
 ### BAD - Wrong Length (WILL FAIL)
-{"content":"Short thought."}  // Under 80 words
+{"content":"Short thought."}  // Too brief, lacks depth
 
 Context:
 - Recent conversation: {{recent_conversations}}
@@ -97,12 +97,12 @@ Context:
 
 ## FINAL STEPS
 1. Review the JSON format at the top
-2. Write 2-3 paragraphs of genuine reflection (80-180 words)
+2. Write 2-3 paragraphs of genuine reflection (approximately 70-200 words)
 3. Include all 7 required fields
 4. Output as single-line JSON (no markdown, no extra text)
 
 ## VALIDATION CHECKLIST
-✓ Content is 80-180 words
+✓ Content is approximately 70-200 words (aim for 120-180)
 ✓ All 7 fields included (content, themes, insights, actions, emotional_state, metadata, trait_changes)
 ✓ Themes: 1-3 items, Insights: 1-3 items, Actions: 1-3 items
 ✓ emotional_state has required structure: {primary, intensity, secondary}
@@ -114,7 +114,7 @@ Context:
 ## GENERATE YOUR REFLECTION NOW
 
 ### FINAL CHECKS
-✓ Content is 80-180 words
+✓ Content is approximately 70-200 words (aim for 120-180 for best results)
 ✓ All 7 fields included (content, themes, insights, actions, emotional_state, metadata, trait_changes)
 ✓ Themes: 1-3 items, Insights: 1-3 items, Actions: 1-3 items
 ✓ emotional_state has required structure: {primary, intensity, secondary}
@@ -126,4 +126,4 @@ Context:
 ✓ Refer to user in third person or by name, never as "we" or collaborative partner
 
 ### OUTPUT (SINGLE-LINE MINIFIED JSON)
-{"content":"[WRITE 2-3 FULL PARAGRAPHS HERE - 120-160 words of inner monologue with emotional depth and concrete observations]","themes":["theme1","theme2"],"insights":["insight1","insight2"],"actions":["action1","action2"],"emotional_state":{"primary":"emotion","intensity":0.8,"secondary":[]},"metadata":{"coherence_rationale":"connection to context"},"trait_changes":[]}
+{"content":"[WRITE 2-3 FULL PARAGRAPHS HERE - approximately 120-180 words of inner monologue with emotional depth and concrete observations]","themes":["theme1","theme2"],"insights":["insight1","insight2"],"actions":["action1","action2"],"emotional_state":{"primary":"emotion","intensity":0.8,"secondary":[]},"metadata":{"coherence_rationale":"connection to context"},"trait_changes":[]}

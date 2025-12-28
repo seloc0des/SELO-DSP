@@ -185,15 +185,40 @@ class AutobiographicalEpisodeService:
             logger.warning("Episode payload has empty narrative text.")
             return None
         
-        # FIXED: Validate word count and reject episodes outside acceptable range
-        # Adjusted to accept what LLM reliably generates (35-280 words)
-        word_count = len(narrative_text.split())
-        if word_count < 35:
-            logger.warning("Episode narrative too short (%d words, minimum 35). Rejecting.", word_count)
+        # Validate word count using standardized count_words() function
+        # Target range: 30-300 words with ±15 word tolerance (accepts 15-315)
+        # This gives LLMs more flexibility while maintaining quality bounds
+        from ..utils.text_utils import count_words
+        word_count = count_words(narrative_text)
+        
+        MIN_WORDS = 30
+        MAX_WORDS = 300
+        TOLERANCE = 15
+        
+        if word_count < (MIN_WORDS - TOLERANCE):
+            logger.warning(
+                "Episode narrative too short (%d words, minimum %d with -%d tolerance). Rejecting.",
+                word_count, MIN_WORDS, TOLERANCE
+            )
             return None
-        if word_count > 280:
-            logger.warning("Episode narrative too long (%d words, maximum 280). Rejecting.", word_count)
+        if word_count > (MAX_WORDS + TOLERANCE):
+            logger.warning(
+                "Episode narrative too long (%d words, maximum %d with +%d tolerance). Rejecting.",
+                word_count, MAX_WORDS, TOLERANCE
+            )
             return None
+        
+        # Log soft warnings for near-boundary cases
+        if word_count < MIN_WORDS:
+            logger.info(
+                "Episode narrative slightly short (%d words, target minimum %d). Accepting within tolerance.",
+                word_count, MIN_WORDS
+            )
+        elif word_count > MAX_WORDS:
+            logger.info(
+                "Episode narrative slightly long (%d words, target maximum %d). Accepting within tolerance.",
+                word_count, MAX_WORDS
+            )
 
         try:
             payload["importance"] = float(payload.get("importance", 0.6))

@@ -77,13 +77,14 @@ class ReflectionConfig:
         self.min_reflection_length = int(os.getenv("REFLECTION_MIN_LENGTH", "100"))
         
         # Word count bounds for reflection narrative (allows full emotional depth)
-        # Updated to 90-180 words to keep reflections concise but expressive
-        # Lower bound of 90 preserves full narrative arcs without rambling
-        # Upper bound of 180 keeps content tight for scheduling/latency
+        # Updated to 70-200 words to give LLMs more flexibility while maintaining quality
+        # Lower bound of 70 allows concise reflections without being too restrictive
+        # Upper bound of 200 permits deeper exploration when context warrants it
+        # Validation uses ±10 word tolerance, so actual acceptance range is 60-210
         try:
-            self.word_count_min = int(os.getenv("REFLECTION_WORD_MIN", "90"))
+            self.word_count_min = int(os.getenv("REFLECTION_WORD_MIN", "70"))
         except Exception:
-            self.word_count_min = 90
+            self.word_count_min = 70
         
         # Use tier-aware fallback for word count max
         try:
@@ -94,15 +95,16 @@ class ReflectionConfig:
                 try:
                     from ..utils.system_profile import detect_system_profile
                     profile = detect_system_profile()
-                    # High-tier and standard tier share the same concise cap
-                    self.word_count_max = 180
+                    # High-tier and standard tier share the same cap
+                    # Widened to 200 words to reduce LLM word-count struggles
+                    self.word_count_max = 200
                     logger.debug(f"Using tier-aware word count max: {self.word_count_max} (tier={profile.get('tier', 'unknown')})")
                 except Exception as e:
-                    # Final fallback to 180 words
-                    self.word_count_max = 180
+                    # Final fallback to 200 words
+                    self.word_count_max = 200
                     logger.warning(f"Failed to detect system tier for word count, using fallback: {e}")
         except Exception:
-            self.word_count_max = 180
+            self.word_count_max = 200
 
         # Coherence and quality checks
         self.coherence_check_enabled = os.getenv("REFLECTION_COHERENCE_CHECK", "true").lower() == "true"

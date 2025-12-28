@@ -135,13 +135,13 @@ class ReflectionProcessor:
                 from ..config.reflection_config import get_reflection_config
                 cfg = get_reflection_config()
                 cls._word_count_config = {
-                    'min': getattr(cfg, 'word_count_min', 80),
-                    'max': getattr(cfg, 'word_count_max', 180)
+                    'min': getattr(cfg, 'word_count_min', 70),
+                    'max': getattr(cfg, 'word_count_max', 200)
                 }
             except (ImportError, AttributeError, KeyError) as e:
                 # Fallback to our standard range if config can't be loaded
                 logger.debug(f"Failed to load reflection config: {e}")
-                cls._word_count_config = {'min': 80, 'max': 180}
+                cls._word_count_config = {'min': 70, 'max': 200}
         return cls._word_count_config
     
     @staticmethod
@@ -180,19 +180,19 @@ class ReflectionProcessor:
         "message" reflections (and closely related "memory_triggered" reflections),
         allow narrower bounds so inner monologue is more concise.
         """
-        base = cls.get_word_count_config() or {"min": 80, "max": 250}
+        base = cls.get_word_count_config() or {"min": 70, "max": 200}
         rtype = (reflection_type or "").strip().lower()
 
         if rtype in {"message", "memory_triggered"}:
             import os
             try:
-                msg_min = int(os.getenv("REFLECTION_MESSAGE_WORD_MIN", "80"))
+                msg_min = int(os.getenv("REFLECTION_MESSAGE_WORD_MIN", "70"))
             except (ValueError, TypeError):
-                msg_min = 80
+                msg_min = 70
             try:
-                msg_max = int(os.getenv("REFLECTION_MESSAGE_WORD_MAX", "320"))
+                msg_max = int(os.getenv("REFLECTION_MESSAGE_WORD_MAX", "250"))
             except (ValueError, TypeError):
-                msg_max = 320
+                msg_max = 250
 
             # Sanity-check overrides; fall back to base config on invalid values
             if msg_min <= 0 or msg_max <= msg_min:
@@ -204,9 +204,9 @@ class ReflectionProcessor:
     @staticmethod
     def _calculate_target_word_range(word_config: Dict[str, int]) -> tuple[int, int]:
         """Derive guidance range for narrative length based on configured limits."""
-        # Use configured values, fall back to 80-250 if not set
-        min_words = int(word_config.get("min", 80))
-        max_words = int(word_config.get("max", 250))
+        # Use configured values, fall back to 70-200 if not set
+        min_words = int(word_config.get("min", 70))
+        max_words = int(word_config.get("max", 200))
 
         # Calculate target range based on configured min/max
         target_min = min_words + 30
@@ -551,8 +551,8 @@ class ReflectionProcessor:
         min_words = word_config['min']
         max_words = word_config['max']
         
-        # Apply 5-word tolerance band for near-misses
-        TOLERANCE = 5
+        # Apply 10-word tolerance band for near-misses (widened to reduce LLM word-count struggles)
+        TOLERANCE = 10
         if word_count < (min_words - TOLERANCE) or word_count > (max_words + TOLERANCE):
             logger.debug(
                 "Reflection content length outside %s-%s range (with %s-word tolerance) during schema check: %s words",
@@ -2237,8 +2237,8 @@ Please regenerate your reflection following these identity constraints strictly.
 
                     word_count = count_words(text)
                     
-                    # Apply 5-word tolerance band for near-misses
-                    TOLERANCE = 5
+                    # Apply 10-word tolerance band for near-misses (widened to reduce LLM struggles)
+                    TOLERANCE = 10
                     hard_min = config_word_min - TOLERANCE
                     hard_max = config_word_max + TOLERANCE
                     
