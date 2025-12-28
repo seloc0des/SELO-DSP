@@ -80,7 +80,7 @@ class ReflectionConfig:
         # Updated to 70-200 words to give LLMs more flexibility while maintaining quality
         # Lower bound of 70 allows concise reflections without being too restrictive
         # Upper bound of 200 permits deeper exploration when context warrants it
-        # Validation uses ±10 word tolerance, so actual acceptance range is 60-210
+        # Validation uses ±20 word tolerance, so actual acceptance range is 50-220
         try:
             self.word_count_min = int(os.getenv("REFLECTION_WORD_MIN", "70"))
         except Exception:

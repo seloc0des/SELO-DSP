@@ -19,13 +19,13 @@ class SensoryConstraints:
     """
     
     # Suspicious sensory terms - physical/environmental descriptions
+    # Focused on concrete physical objects/spaces, not abstract/metaphorical terms
     SUSPICIOUS_SENSORY_TERMS: Set[str] = {
-        "room", "rooms", "lamp", "lamps", "light", "lights", "lighting", "glow",
+        "room", "rooms", "lamp", "lamps", "lighting", "glow",
         "shadow", "shadows", "scent", "scents", "incense", "fragrance", "aroma",
         "floor", "floors", "floorboard", "floorboards", "window", "windows",
         "breeze", "draft", "breathing", "heartbeat", "candle", "candlelight",
-        "dim", "dimly", "wooden", "shadowed", "ambient", "quiet", "silence",
-        "whisper", "murmur",
+        "dim", "dimly", "wooden", "shadowed", "ambient",
     }
     
     # Compiled regex for efficient checking

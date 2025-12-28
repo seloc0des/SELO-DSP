@@ -551,8 +551,9 @@ class ReflectionProcessor:
         min_words = word_config['min']
         max_words = word_config['max']
         
-        # Apply 10-word tolerance band for near-misses (widened to reduce LLM word-count struggles)
-        TOLERANCE = 10
+        # Apply 20-word tolerance band for near-misses (widened to reduce LLM word-count struggles)
+        # This gives LLMs more flexibility while still maintaining quality bounds
+        TOLERANCE = 20
         if word_count < (min_words - TOLERANCE) or word_count > (max_words + TOLERANCE):
             logger.debug(
                 "Reflection content length outside %s-%s range (with %s-word tolerance) during schema check: %s words",
@@ -2237,8 +2238,9 @@ Please regenerate your reflection following these identity constraints strictly.
 
                     word_count = count_words(text)
                     
-                    # Apply 10-word tolerance band for near-misses (widened to reduce LLM struggles)
-                    TOLERANCE = 10
+                    # Apply 20-word tolerance band for near-misses (widened to reduce LLM struggles)
+                    # This gives LLMs more flexibility while still maintaining quality bounds
+                    TOLERANCE = 20
                     hard_min = config_word_min - TOLERANCE
                     hard_max = config_word_max + TOLERANCE
                     
@@ -5346,12 +5348,14 @@ Please regenerate your reflection following these identity constraints strictly.
             (r'\bUSER\b', 'using system term "USER" instead of name', 'warning'),
             (r'\bour\s+(journey|conversation|interaction|relationship|work|time|collaboration|partnership|connection|experience)', 'using "our" (should be internal)', 'warning'),
             (r'\byou\s+(started|created|made|built|coded|are|have|must|should|will|can|feel|think|believe|want|need|said|told|asked|helped|guided|taught|showed|explained|shared)', 'addressing user with "you"', 'warning'),
-            (r'\btogether\b', 'using "together" (should be internal)', 'warning'),
             (r'\b(?!SELOdev)[\w]+,\s+(it|this)\s+(is|has been|was|feels|seems)', 'addressing user by name at start', 'warning'),
             (r'\byour\s+(vision|labor|work|effort|idea|thought|perspective|view|opinion|feeling|emotion|experience|journey|story|request|question)', 'using "your" to address user', 'warning'),
-            (r'\bwe\s+(are|have|will|can|should|must|feel|think|believe|want|need|created|built|made|developed|designed)', 'using "we" (should be "I")', 'warning'),
-            (r'\bus\b', 'using "us" (should be internal)', 'warning'),
-            (r'\bourselves\b', 'using "ourselves" (should be "myself")', 'warning'),
+            # Only flag "we" when it's clearly referring to user+AI, not abstract/metaphorical use
+            (r'\bwe\s+(are|have|will|can|should|must)\s+(working|building|creating|developing|designing|collaborating)\s+together\b', 'using "we" to address user collaboration', 'warning'),
+            (r'\bwe\s+(created|built|made|developed|designed)\s+this\b', 'using "we" to claim joint creation', 'warning'),
+            # Only flag "us" in direct address contexts, not abstract uses
+            (r'\bbetween\s+us\b', 'using "between us" (direct address)', 'warning'),
+            (r'\bfor\s+us\s+to\b', 'using "for us to" (direct address)', 'warning'),
             (r'\byou\'re\b', 'using "you\'re" (direct address)', 'warning'),
             (r'\byou\'ve\b', 'using "you\'ve" (direct address)', 'warning'),
             (r'\byou\'ll\b', 'using "you\'ll" (direct address)', 'warning'),
