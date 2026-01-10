@@ -18,6 +18,7 @@ const Chat = ({ userId }) => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [apiBase, setApiBase] = useState(null);
+  const [reflectionConnectionStatus, setReflectionConnectionStatus] = useState(() => reflectionService.getConnectionStatus());
   // Map of turnId -> assistant message content waiting for matching reflection
   const pendingAnswersRef = useRef(new Map());
   const reflectionsSeenRef = useRef(new Set());
@@ -27,9 +28,11 @@ const Chat = ({ userId }) => {
   const chatSocketRef = useRef(null);
   const streamingBuffersRef = useRef(new Map());
   const releasedTurnsRef = useRef(new Set());
+  const holdForReflectionRef = useRef(true);
 
   const setPendingAnswer = useCallback((turnId, { content, timestamp } = {}) => {
     if (!turnId) return;
+    if (releasedTurnsRef.current.has(turnId)) return;
     const existing = pendingAnswersRef.current.get(turnId) || {};
     const resolvedContent = content !== undefined ? content : existing.content;
     const resolvedTimestamp = timestamp ?? existing.timestamp ?? new Date().toISOString();
@@ -37,7 +40,6 @@ const Chat = ({ userId }) => {
       content: resolvedContent !== undefined ? resolvedContent : '',
       timestamp: resolvedTimestamp,
     });
-    releasedTurnsRef.current.delete(turnId);
   }, []);
 
   const flushPendingAnswer = useCallback((turnId, overrides = {}) => {
@@ -89,6 +91,30 @@ const Chat = ({ userId }) => {
       }
     };
   }, []);
+
+  useEffect(() => {
+    const unsubscribe = reflectionService.subscribeToConnectionStatus((status) => {
+      setReflectionConnectionStatus(status);
+    });
+    return () => {
+      try { unsubscribe && unsubscribe(); } catch (_) {}
+    };
+  }, []);
+
+  useEffect(() => {
+    holdForReflectionRef.current = STRICT_REFLECTION_FIRST;
+  }, [reflectionConnectionStatus]);
+
+  useEffect(() => {
+    pendingTimeoutsRef.current.forEach(timeoutId => {
+      clearTimeout(timeoutId);
+    });
+    pendingTimeoutsRef.current.clear();
+    pendingAnswersRef.current.clear();
+    reflectionsSeenRef.current.clear();
+    releasedTurnsRef.current.clear();
+    streamingBuffersRef.current.clear();
+  }, [sessionId]);
 
   // Resolve API base URL at runtime via backend /config.json (with fallbacks inside getApiBaseUrl)
   useEffect(() => {
@@ -230,6 +256,7 @@ const Chat = ({ userId }) => {
       const turnId = payload.turn_id || payload.turnId;
       const chunk = payload.chunk;
       if (!turnId || typeof chunk !== 'string' || chunk.length === 0) return;
+      if (releasedTurnsRef.current.has(turnId)) return;
 
       const previous = streamingBuffersRef.current.get(turnId) || '';
       const combined = previous + chunk;
@@ -240,7 +267,8 @@ const Chat = ({ userId }) => {
         timestamp: payload.timestamp || new Date().toISOString(),
       });
 
-      if (payload.final && reflectionsSeenRef.current.has(turnId)) {
+      const holdForReflection = holdForReflectionRef.current;
+      if (payload.final && (!holdForReflection || reflectionsSeenRef.current.has(turnId))) {
         flushPendingAnswer(turnId, {
           content: combined,
           timestamp: payload.timestamp,
@@ -251,6 +279,7 @@ const Chat = ({ userId }) => {
     socket.on('chat_complete', (payload = {}) => {
       const turnId = payload.turn_id || payload.turnId;
       if (!turnId) return;
+      if (releasedTurnsRef.current.has(turnId)) return;
 
       const content = typeof payload.content === 'string' ? payload.content : '';
       const timestamp = payload.timestamp || new Date().toISOString();
@@ -258,7 +287,8 @@ const Chat = ({ userId }) => {
       streamingBuffersRef.current.delete(turnId);
       setPendingAnswer(turnId, { content, timestamp });
 
-      if (reflectionsSeenRef.current.has(turnId)) {
+      const holdForReflection = holdForReflectionRef.current;
+      if (!holdForReflection || reflectionsSeenRef.current.has(turnId)) {
         flushPendingAnswer(turnId, { content, timestamp });
       }
     });
@@ -328,24 +358,19 @@ const Chat = ({ userId }) => {
       const turnId = data.turn_id;
       const assistantContent = data.response;
       const assistantTimestamp = data.timestamp || new Date().toISOString();
-      // Prefer showing reflection first. Gate assistant until matching reflection arrives,
-      // but fall back after a short timeout to prevent indefinite blocking.
+      const holdForReflection = STRICT_REFLECTION_FIRST;
+      try {
+        const refObj = data?.reflection;
+        const refTurnId = refObj?.turn_id || refObj?.turnId;
+        if (refTurnId) {
+          reflectionsSeenRef.current.add(refTurnId);
+        }
+      } catch (_) {}
       if (turnId) {
-        if (reflectionsSeenRef.current.has(turnId)) {
-          setMessages(prev => [...prev, { role: 'assistant', content: assistantContent, timestamp: assistantTimestamp }]);
-        } else {
-          setPendingAnswer(turnId, { content: assistantContent, timestamp: assistantTimestamp });
-          if (!STRICT_REFLECTION_FIRST) {
-            const timeoutId = setTimeout(() => {
-              if (pendingAnswersRef.current.has(turnId)) {
-                const pending = pendingAnswersRef.current.get(turnId);
-                pendingAnswersRef.current.delete(turnId);
-                pendingTimeoutsRef.current.delete(turnId);
-                setMessages(prev => [...prev, { role: 'assistant', content: pending?.content || assistantContent, timestamp: pending?.timestamp || assistantTimestamp }]);
-              }
-            }, 8000);
-            pendingTimeoutsRef.current.set(turnId, timeoutId);
-          }
+        setPendingAnswer(turnId, { content: assistantContent, timestamp: assistantTimestamp });
+
+        if (!holdForReflection || reflectionsSeenRef.current.has(turnId)) {
+          flushPendingAnswer(turnId, { content: assistantContent, timestamp: assistantTimestamp });
         }
       } else {
         // No turn_id returned, show immediately

@@ -166,14 +166,29 @@ class AutobiographicalEpisodeService:
         candidate = raw.strip()
         if not candidate:
             return None
+        
+        # Strip markdown code fences
         if candidate.startswith("```"):
             lines = [line for line in candidate.splitlines() if not line.strip().startswith("```")]
             candidate = "".join(lines).strip()
+        
+        # Attempt 1: Parse as-is
         try:
             payload = json.loads(candidate)
         except json.JSONDecodeError:
-            logger.warning("LLM output is not valid JSON: %s", candidate[:150])
-            return None
+            # Attempt 2: Extract first JSON object from mixed content
+            import re
+            json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', candidate, re.DOTALL)
+            if json_match:
+                try:
+                    payload = json.loads(json_match.group(0))
+                    logger.info("Successfully extracted JSON object from mixed LLM output")
+                except json.JSONDecodeError:
+                    logger.warning("LLM output is not valid JSON even after extraction: %s", candidate[:150])
+                    return None
+            else:
+                logger.warning("LLM output is not valid JSON and no JSON object found: %s", candidate[:150])
+                return None
 
         required_fields = {"title", "narrative_text", "summary"}
         if not required_fields.issubset(payload.keys()):

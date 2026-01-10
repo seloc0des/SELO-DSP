@@ -325,11 +325,10 @@ class SDLEngine:
         Returns:
             List of matching learning objects
         """
-        # Convert query to vector
+        # Convert query to vector using embedding model
         vector = await self.llm_router.route(
             task_type="embedding",
-            prompt=query,
-            model="analytical"
+            prompt=query
         )
         
         # Search vector store

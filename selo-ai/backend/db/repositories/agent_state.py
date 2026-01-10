@@ -330,6 +330,52 @@ class PlanStepRepository:
 class AutobiographicalEpisodeRepository:
     """Repository for autobiographical episodes."""
 
+    async def find_similar_recent_episodes(
+        self,
+        persona_id: str,
+        narrative_text: str,
+        within_hours: int = 24,
+        session: Optional[AsyncSession] = None,
+    ) -> List[Dict[str, Any]]:
+        """Find recent episodes with similar narrative content for deduplication."""
+        from datetime import datetime, timezone, timedelta
+        
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=within_hours)
+        
+        async with get_session(session) as db:
+            stmt = (
+                select(AutobiographicalEpisode)
+                .where(
+                    AutobiographicalEpisode.persona_id == persona_id,
+                    AutobiographicalEpisode.created_at >= cutoff_time
+                )
+                .order_by(AutobiographicalEpisode.created_at.desc())
+            )
+            result = await db.execute(stmt)
+            episodes = [episode.to_dict() for episode in result.scalars().all()]
+            
+            # Simple text similarity check (can be enhanced with embedding similarity later)
+            similar = []
+            narrative_lower = narrative_text.lower().strip()
+            narrative_words = set(narrative_lower.split())
+            
+            for episode in episodes:
+                existing_narrative = (episode.get("narrative_text") or "").lower().strip()
+                existing_words = set(existing_narrative.split())
+                
+                # Calculate Jaccard similarity
+                if narrative_words and existing_words:
+                    intersection = len(narrative_words & existing_words)
+                    union = len(narrative_words | existing_words)
+                    similarity = intersection / union if union > 0 else 0.0
+                    
+                    # Consider similar if >70% word overlap
+                    if similarity > 0.7:
+                        episode["similarity_score"] = similarity
+                        similar.append(episode)
+            
+            return similar
+
     async def create_episode(
         self,
         episode_payload: Dict[str, Any],

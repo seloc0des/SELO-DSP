@@ -1175,6 +1175,21 @@ async def lifespan(app: FastAPI):
 
     # License validation removed - open source release
 
+    # Architecture validation: Confirm single-user mode
+    try:
+        single_user_mode = os.getenv("SINGLE_USER_MODE", "true").lower() in ("true", "1", "yes")
+        if not single_user_mode:
+            logging.warning(
+                "⚠️  ARCHITECTURE WARNING: SINGLE_USER_MODE is disabled. "
+                "SELO AI is architecturally designed as a single-user system. "
+                "Disabling this flag may cause unexpected behavior with identity management, "
+                "reflection generation, and socket room coordination."
+            )
+        else:
+            logging.info("✓ Single-user mode: enabled (architectural default)")
+    except Exception as arch_err:
+        logging.warning(f"Architecture validation failed: {arch_err}")
+
     # Security validation: Check for default/insecure credentials
     try:
         db_url = os.getenv("DATABASE_URL", "")
@@ -1762,9 +1777,10 @@ def _mask_secret(val: Optional[str], show_tail: int = 4) -> Optional[str]:
         return "***"
 
 @app.get("/diagnostics/env")
-async def diagnostics_env():
+async def diagnostics_env(_auth_ok: bool = Depends(require_system_key)):
     """Return a sanitized snapshot of important environment variables for diagnostics.
     Secrets are masked; values are included only for troubleshooting visibility.
+    Requires system API key.
     """
     env = os.environ
     db_url = env.get("DATABASE_URL")
@@ -1797,10 +1813,15 @@ async def diagnostics_env():
     }
 
 @app.get("/diagnostics/gpu")
-async def diagnostics_gpu(test_llm: bool = False, model_role: str = "reflection"):
+async def diagnostics_gpu(
+    test_llm: bool = False,
+    model_role: str = "reflection",
+    _auth_ok: bool = Depends(require_system_key)
+):
     """Report GPU/CUDA availability and comprehensive GPU diagnostics.
     - Uses nvidia-smi to detect GPUs (if available)
     - Returns OLLAMA_* env knobs currently in effect
+    Requires system API key.
     - Reports PyTorch CUDA status and memory usage
     - Reports FAISS GPU acceleration status
     - Optionally runs a very small LLM call to verify end-to-end path (disabled by default)
@@ -2378,8 +2399,8 @@ async def _adopt_boot_reflection_if_needed(
         if reflection_repo is None:
             return None
         
-        # Check if session already has reflections
-        session_existing = await reflection_repo.list_reflections(user_profile_id=session_id, limit=1)
+        # Check if installation user already has reflections
+        session_existing = await reflection_repo.list_reflections(user_profile_id=user.id, limit=1)
         
         # Check if boot reflection has already been adopted
         try:
@@ -2401,10 +2422,10 @@ async def _adopt_boot_reflection_if_needed(
         boot_result = (boot_reflection or {}).get("result", {})
         
         try:
-            # Copy boot reflection to this session
+            # Copy boot reflection to installation user
             copied = await reflection_repo.create_reflection({
                 "reflection_type": "message",
-                "user_profile_id": session_id,
+                "user_profile_id": user.id,
                 "result": boot_result,
                 "metadata": {"baseline": True, "seed": True, "source": "boot_copy"},
                 "turn_id": turn_id,
@@ -2416,7 +2437,7 @@ async def _adopt_boot_reflection_if_needed(
                     "reflection_id": (copied or {}).get("id"),
                     "reflection_type": "message",
                     "result": boot_result,
-                    "user_profile_id": session_id,
+                    "user_profile_id": user.id,
                     "created_at": (copied or {}).get("created_at"),
                     "turn_id": turn_id,
                 }
@@ -2441,15 +2462,18 @@ async def _adopt_boot_reflection_if_needed(
                     pass
                 
                 # Emit to frontend
-                payload = {
-                    "type": "reflection",
-                    "reflection": boot_result,
-                    "session_id": session_id,
-                    "timestamp": utc_iso(),
-                }
                 await reflection_ns.emit_reflection_event(
                     event_name="reflection_generated",
-                    data=payload,
+                    data={
+                        **enriched_data,
+                        "metadata": {"baseline": True, "seed": True, "source": "boot_copy"},
+                        "content": (boot_result or {}).get("content") if isinstance(boot_result, dict) else "",
+                        "themes": (boot_result or {}).get("themes") if isinstance(boot_result, dict) else [],
+                        "insights": (boot_result or {}).get("insights") if isinstance(boot_result, dict) else [],
+                        "actions": (boot_result or {}).get("actions") if isinstance(boot_result, dict) else [],
+                        "emotional_state": (boot_result or {}).get("emotional_state") if isinstance(boot_result, dict) else None,
+                        "trait_changes": (boot_result or {}).get("trait_changes") if isinstance(boot_result, dict) else [],
+                    },
                     user_id=session_id,
                 )
             
@@ -2482,10 +2506,26 @@ class ChatResponse(BaseModel):
     history: List[Dict[str, Any]]
     turn_id: str
     note: Optional[str] = None
+    reflection: Optional[Dict[str, Any]] = None
 
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, request: Request) -> ChatResponse:
+    """
+    Main chat endpoint for SELO AI conversational interface.
+    
+    SINGLE-USER ARCHITECTURE:
+    - installation_user_id: Persistent DB user representing the sole installation owner
+    - session_id: Frontend browser conversation key for socket room targeting
+    - Socket emissions use session_id for room delivery
+    - Database operations use installation_user_id for persistence
+    - This separation ensures proper socket delivery while maintaining single-user invariant
+    
+    REFLECTION-FIRST ARCHITECTURE:
+    - Every user turn triggers synchronous reflection generation
+    - Chat response waits for reflection to complete
+    - Ensures consistent persona evolution and memory formation
+    """
     session_id = chat_request.session_id
     
     # Detect whether this turn should trigger system diagnostics
@@ -2519,10 +2559,14 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
     user_repo = app.state.services.get("user_repo")
     reflection_repo = app.state.services.get("reflection_repo")
     
-    # Get the single installation user (SELO AI is single-user, single-persona)
-    # Use session_id for frontend/backend alignment but maintain single user architecture
-    user = await user_repo.get_or_create_default_user(user_id=session_id)
-    user_id = user.id
+    # SINGLE-USER ARCHITECTURE: Get the canonical installation user
+    # - SELO AI maintains exactly ONE user per installation
+    # - session_id (from frontend) is used for socket room targeting only
+    # - installation_user_id (from DB) is used for all persistent state
+    # - This ensures socket events reach the correct browser tab while
+    #   maintaining a single authoritative user identity in the database
+    user = await user_repo.get_or_create_default_user()
+    installation_user_id = user.id
     
     # OPTIMIZATION: Fetch persona once here instead of 3x throughout request
     persona_repo = app.state.services.get("persona_repo")
@@ -2530,7 +2574,7 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
     persona_name = "SELO"  # Default fallback
     if persona_repo:
         try:
-            persona = await persona_repo.get_or_create_default_persona(user_id=user.id, include_traits=True)
+            persona = await persona_repo.get_or_create_default_persona(user_id=installation_user_id, include_traits=True)
             if persona and hasattr(persona, "name") and persona.name and persona.name.strip():
                 persona_name = persona.name.strip()
                 logger.debug(f"Using persona name: {persona_name}")
@@ -2538,10 +2582,10 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
             logger.warning(f"Failed to fetch persona (using fallback): {e}")
     
     # Get or create conversation for this session
-    conversation = await conversation_repo.get_or_create_conversation(session_id, user_id)
+    conversation = await conversation_repo.get_or_create_conversation(session_id, installation_user_id)
     
     # Ensure relationship question queue is pre-populated for new installs
-    await _ensure_relationship_questions_seed(reflection_repo, session_id)
+    await _ensure_relationship_questions_seed(reflection_repo, installation_user_id)
 
     # Add user message to persistent storage
     start_time = time.time()
@@ -2934,107 +2978,55 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
             # Reflection always waits unbounded to preserve reflection-first behavior
             logging.info("Reflection sync timeout disabled (unbounded). Chat will wait for reflection to complete.")
 
-            # SELECTIVE REFLECTION: Decide if this interaction warrants deep introspection
-            should_reflect_decision = {"should_reflect": True, "reason": "default", "method": "fallback"}
-            turn_count = len([m for m in conversation_history if m.get("role") == "user"]) if conversation_history else 0
-            
+            # REFLECTION-FIRST ARCHITECTURE: Always generate reflection for every turn
+            # This ensures consistent persona evolution and memory formation
+            should_reflect_decision = {
+                "should_reflect": True, 
+                "reason": "reflection_first_architecture", 
+                "method": "always_reflect",
+                "confidence": 1.0
+            }
+            logger.debug("Reflection-first: generating reflection for every user turn")
+
+            # Skip boot adoption when a recent reflection already exists
+            latest_existing: Dict[str, Any] = {}
+            reflection_repo = app.state.services.get("reflection_repo")
+            if reflection_repo is not None:
+                latest_existing = await reflection_repo.get_latest_reflection(
+                    installation_user_id,
+                    include_baseline=False,
+                ) or {}
+
+            if not latest_existing:
+                # Use extracted boot reflection adoption function
+                await _adopt_boot_reflection_if_needed(
+                    session_id=session_id,
+                    turn_id=turn_id,
+                    services=app.state.services,
+                    user=user,
+                    persona=persona,
+                )
+
+            # Emit a 'reflection_generating' event immediately for reflection-first UX
             try:
-                should_reflect_decision = await reflection_processor.should_generate_reflection(
-                    user_message=chat_request.prompt,
-                    conversation_context=conversation_context,
-                    conversation_history=conversation_history,
-                    turn_count=turn_count,
-                    time_gap_minutes=time_gap_minutes,
-                    user_profile_id=session_id
-                )
-                logger.info(
-                    f"Reflection decision: {should_reflect_decision['should_reflect']} "
-                    f"(method={should_reflect_decision['method']}, "
-                    f"reason={should_reflect_decision['reason']}, "
-                    f"confidence={should_reflect_decision.get('confidence', 0.0):.2f})"
-                )
-            except Exception as classifier_err:
-                logger.error(f"Reflection classifier failed, defaulting to reflect: {classifier_err}")
-                should_reflect_decision = {
-                    "should_reflect": True,
-                    "reason": f"Classifier error: {str(classifier_err)[:50]}",
-                    "method": "error_fallback",
-                    "confidence": 0.5
-                }
-            
-            # Skip reflection if classifier says no
-            if not should_reflect_decision["should_reflect"]:
-                logger.info(f"⚡ Skipping reflection for this interaction: {should_reflect_decision['reason']}")
-                reflection_text = None
-                reflection_payload = {}
-                reflection_repo = app.state.services.get("reflection_repo")
-                latest_reflection: Dict[str, Any] = {}
-                if reflection_repo is not None:
-                    latest_reflection = await reflection_repo.get_latest_reflection(
-                        session_id,
-                        include_baseline=False,
-                    ) or {}
-
-                    if not latest_reflection:
-                        # Use extracted boot reflection adoption function
-                        await _adopt_boot_reflection_if_needed(
-                            session_id=session_id,
-                            turn_id=turn_id,
-                            services=app.state.services,
-                            user=user,  # Pre-fetched at line 2697
-                            persona=persona  # Pre-fetched at line 2706
+                reflection_ns = app.state.services.get("reflection_namespace")
+                if reflection_ns is not None:
+                    async def emit_reflection_generating_payload():
+                        payload = {
+                            "reflection_type": "message",
+                            "user_profile_id": installation_user_id,
+                            "turn_id": turn_id,
+                            "timestamp": utc_iso(),
+                        }
+                        await reflection_ns.emit_reflection_event(
+                            event_name="reflection_generating",
+                            data=payload,
+                            user_id=session_id,  # Use session_id for socket room targeting
                         )
-                        latest_reflection = await reflection_repo.get_latest_reflection(
-                            session_id,
-                            include_baseline=True,
-                        ) or {}
 
-                if latest_reflection:
-                    latest_result = latest_reflection.get("result")
-                    if isinstance(latest_result, dict):
-                        reflection_payload = latest_result
-                        reflection_text = latest_result.get("content") or ""
-                    if not reflection_text:
-                        reflection_text = latest_reflection.get("content", "")
-                # Don't emit reflection_generating event if we're skipping
-            else:
-                # Skip boot adoption when a recent reflection already exists
-                latest_existing: Dict[str, Any] = {}
-                reflection_repo = app.state.services.get("reflection_repo")
-                if reflection_repo is not None:
-                    latest_existing = await reflection_repo.get_latest_reflection(
-                        session_id,
-                        include_baseline=False,
-                    ) or {}
-
-                if not latest_existing:
-                    # Use extracted boot reflection adoption function
-                    await _adopt_boot_reflection_if_needed(
-                        session_id=session_id,
-                        turn_id=turn_id,
-                        services=app.state.services,
-                        user=user,  # Pre-fetched at line 2697
-                        persona=persona  # Pre-fetched at line 2706
-                    )
-                # Proceed with reflection generation
-                # Emit a 'reflection_generating' event immediately for reflection-first UX
-                try:
-                    reflection_ns = app.state.services.get("reflection_namespace")
-                    if reflection_ns is not None:
-                        async def emit_reflection_generating_payload():
-                            payload = {
-                                "type": "reflection_generating",
-                                "session_id": session_id,
-                                "timestamp": utc_iso(),
-                            }
-                            await reflection_ns.emit_reflection_event(
-                                event_name="reflection_generating",
-                                data=payload,
-                                user_id=session_id,
-                            )
-                        await emit_reflection_generating_payload()
-                except Exception as _emit_err:
-                    logging.debug(f"Pre-emit reflection_generating failed (non-fatal): {_emit_err}")
+                    await emit_reflection_generating_payload()
+            except Exception as _emit_err:
+                logging.debug(f"Pre-emit reflection_generating failed (non-fatal): {_emit_err}")
 
             if sync_mode and should_reflect_decision["should_reflect"]:
                 # Synchronous reflection (unbounded wait for reflection-first behavior)
@@ -3043,14 +3035,19 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                     reflection_additional_context = {
                         "current_user_message": chat_request.prompt,
                         "turn_id": turn_id,
+                        "socket_room_id": session_id,  # Pass session_id for socket room targeting
                     }
+                    try:
+                        reflection_additional_context["reflection_classifier"] = should_reflect_decision
+                    except Exception:
+                        pass
                     # Include system metrics when diagnostics are active
                     if diagnostic_mode != DiagnosticMode.NONE and system_snapshot_text:
                         reflection_additional_context["system_health_snapshot"] = system_snapshot_text
                     
                     reflection_result = await reflection_processor.generate_reflection(
                         reflection_type="message",
-                        user_profile_id=session_id,
+                        user_profile_id=installation_user_id,
                         memory_ids=None,
                         max_context_items=10,
                         trigger_source="user_turn",
@@ -3121,6 +3118,7 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                     reflection_additional_context = {
                         "current_user_message": chat_request.prompt,
                         "turn_id": turn_id,
+                        "socket_room_id": session_id,  # Pass session_id for socket room targeting
                     }
                     # Include system metrics when diagnostics are active
                     if diagnostic_mode != DiagnosticMode.NONE and system_snapshot_text:
@@ -3128,7 +3126,7 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                     
                     reflection_result = await reflection_processor.generate_reflection(
                         reflection_type="message",
-                        user_profile_id=session_id,
+                        user_profile_id=installation_user_id,
                         memory_ids=None,
                         max_context_items=10,
                         trigger_source="user_turn",
@@ -3206,27 +3204,35 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                             # Track payload and content from boot reflection copy
                             reflection_payload = boot_result or {}
                             reflection_text = boot_result.get("content") or reflection_text
-                            # Persist a copy under the current session for continuity and emit to frontend
+                            # Persist a copy for installation user for continuity and emit to frontend
                             try:
                                 copied = await reflection_repo.create_reflection({
                                     "reflection_type": "message",
-                                    "user_profile_id": session_id,
+                                    "user_profile_id": installation_user_id,
                                     "result": boot_result,
                                     "metadata": {"baseline": True, "seed": True, "source": "boot_copy"},
                                     "turn_id": turn_id,
                                 })
                                 if reflection_ns is not None:
                                     async def emit_reflection_payload():
-                                        payload = {
-                                            "type": "reflection",
-                                            "reflection": boot_result,
-                                            "session_id": session_id,
-                                            "timestamp": utc_iso(),
-                                        }
                                         await reflection_ns.emit_reflection_event(
                                             event_name="reflection_generated",
-                                            data=payload,
-                                            user_id=session_id,
+                                            data={
+                                                "reflection_id": (copied or {}).get("id"),
+                                                "reflection_type": "message",
+                                                "result": boot_result,
+                                                "user_profile_id": installation_user_id,
+                                                "created_at": (copied or {}).get("created_at"),
+                                                "turn_id": turn_id,
+                                                "metadata": {"baseline": True, "seed": True, "source": "boot_copy"},
+                                                "content": (boot_result or {}).get("content") if isinstance(boot_result, dict) else "",
+                                                "themes": (boot_result or {}).get("themes") if isinstance(boot_result, dict) else [],
+                                                "insights": (boot_result or {}).get("insights") if isinstance(boot_result, dict) else [],
+                                                "actions": (boot_result or {}).get("actions") if isinstance(boot_result, dict) else [],
+                                                "emotional_state": (boot_result or {}).get("emotional_state") if isinstance(boot_result, dict) else None,
+                                                "trait_changes": (boot_result or {}).get("trait_changes") if isinstance(boot_result, dict) else [],
+                                            },
+                                            user_id=session_id,  # Use session_id for socket room targeting
                                         )
                                     await emit_reflection_payload()
                                 # Write the marker to avoid repeating in this later path as well
@@ -3241,35 +3247,8 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
     except Exception as _baseline_err:
         logging.debug(f"Boot reflection adoption not applied: {_baseline_err}")
 
-    # Optional degraded mode only if explicitly enabled by environment
-    # If classifier decided to skip reflection, allow proceeding without reflection
-    allow_degraded = os.getenv("REFLECTION_ALLOW_DEGRADED", "false").lower() in ("1","true","yes")
+    allow_degraded = False
     degraded_mode = False
-    classifier_skip = not should_reflect_decision.get("should_reflect", True)
-    
-    if not reflection_text and allow_degraded and not classifier_skip:
-        # Degraded mode enabled but classifier wanted reflection - do it async
-        degraded_mode = True
-        try:
-            reflection_processor = app.state.services.get("reflection_processor")
-            if reflection_processor is not None:
-                asyncio.create_task(
-                    reflection_processor.generate_reflection(
-                        reflection_type="message",
-                        user_profile_id=session_id,
-                        memory_ids=None,
-                        max_context_items=10,
-                        trigger_source="user_turn_background",
-                        turn_id=turn_id,
-                        user_name=user_name_from_message,
-                    )
-                )
-        except Exception as _bg_err:
-            logging.debug(f"Background reflection scheduling failed: {_bg_err}")
-    elif not reflection_text and classifier_skip:
-        # Classifier decided to skip - treat as valid degraded mode
-        degraded_mode = True
-        logger.info("Classifier skip - proceeding without reflection")
     # Reflection is mandatory - try boot reflection adoption as last resort before failing
     if not reflection_text and not degraded_mode:
         # Last resort: try to adopt boot reflection for first-time users
@@ -3285,13 +3264,12 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                 persona=persona
             )
             if adopted_result:
-                boot_result = adopted_result.get("result", {})
-                if isinstance(boot_result, dict):
-                    reflection_text = boot_result.get("content", "")
-                    reflection_payload = boot_result
-                elif isinstance(boot_result, str):
-                    reflection_text = boot_result
-                    reflection_payload = {"content": boot_result}
+                if isinstance(adopted_result, dict):
+                    reflection_text = adopted_result.get("content", "")
+                    reflection_payload = adopted_result
+                elif isinstance(adopted_result, str):
+                    reflection_text = adopted_result
+                    reflection_payload = {"content": adopted_result}
                 if reflection_text:
                     logging.info("Boot reflection adoption successful - proceeding with adopted reflection.")
         except Exception as adopt_err:
@@ -3305,12 +3283,16 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                 if reflection_processor:
                     fallback_result = await reflection_processor.generate_reflection(
                         reflection_type="message",
-                        user_profile_id=session_id,
+                        user_profile_id=installation_user_id,
                         memory_ids=None,
                         max_context_items=5,
                         trigger_source="first_contact_fallback",
                         turn_id=turn_id,
-                        additional_context={"current_user_message": chat_request.prompt, "is_first_contact": True},
+                        additional_context={
+                            "current_user_message": chat_request.prompt,
+                            "is_first_contact": True,
+                            "socket_room_id": session_id,
+                        },
                     )
                     if fallback_result:
                         fallback_content = (fallback_result.get("result", {}) or {}).get("content", "")
@@ -3347,7 +3329,7 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
         try:
             if reflection_repo:
                 pending_questions = await reflection_repo.list_relationship_question_queue(
-                    user_profile_id=session_id,
+                    user_profile_id=installation_user_id,
                     status="pending",
                     limit=1,
                     include_future=False,
@@ -3841,6 +3823,16 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
             "turn_id": turn_id,
             "timestamp": assistant_timestamp_iso,
         }
+        try:
+            result_payload["reflection"] = {
+                "reflection_type": "message",
+                "user_profile_id": installation_user_id,
+                "turn_id": turn_id,
+                "content": reflection_text or "",
+                **(reflection_payload if isinstance(reflection_payload, dict) else {}),
+            }
+        except Exception:
+            pass
         if relationship_question_payload:
             result_payload.setdefault("metadata", {})["relationship_question"] = relationship_question_payload
         if relationship_answer_metadata:
@@ -3974,11 +3966,16 @@ async def api_health_alias():
     return await health_check()
 
 @app.get("/health/details")
-async def health_details(probe_llm: bool = False, probe_db: bool = False):
+async def health_details(
+    probe_llm: bool = False,
+    probe_db: bool = False,
+    _auth_ok: bool = Depends(require_system_key)
+):
     """Extended health diagnostics.
     - probe_llm: when true, perform a lightweight LLMRouter ping via centralized DI
     - probe_db: when true, attempt a non-destructive DB connectivity check (SELECT 1)
     Both probes are optional and safely disabled by default.
+    Requires system API key.
     """
     details = {
         "status": "ok",
@@ -4273,8 +4270,8 @@ async def get_performance_monitoring_stats():
         return {"status": "error", "error": str(e)}
 
 @app.post("/health/performance/cache/clear")
-async def clear_performance_cache():
-    """Clear the LLM response cache (performance endpoint)."""
+async def clear_performance_cache(_auth_ok: bool = Depends(require_system_key)):
+    """Clear the LLM response cache (performance endpoint). Requires system API key."""
     try:
         from .llm.controller import LLMController
         controller = LLMController()
@@ -4300,8 +4297,8 @@ async def get_available_models():
         return {"status": "error", "error": str(e)}
 
 @app.post("/health/cache/clear")
-async def clear_response_cache():
-    """Clear the LLM response cache."""
+async def clear_response_cache(_auth_ok: bool = Depends(require_system_key)):
+    """Clear the LLM response cache. Requires system API key."""
     try:
         from .core.response_cache import clear_cache
         await clear_cache()
@@ -4394,8 +4391,8 @@ async def get_memories(
         raise HTTPException(status_code=500, detail="Failed to get memories")
 
 @app.post("/memories/consolidate")
-async def trigger_memory_consolidation():
-    """Manually trigger memory consolidation for the current user."""
+async def trigger_memory_consolidation(_auth_ok: bool = Depends(require_system_key)):
+    """Manually trigger memory consolidation for the current user. Requires system API key."""
     try:
         memory_consolidator = app.state.services.get("memory_consolidator")
         user_repo = app.state.services.get("user_repo")
@@ -4504,33 +4501,33 @@ async def simple_health_check():
     return {"status": "healthy", "timestamp": utc_iso()}
 
 @app.get("/health/detailed")
-async def detailed_health():
-    """Detailed system health with all components."""
+async def detailed_health(_auth_ok: bool = Depends(require_system_key)):
+    """Detailed system health with all components. Requires system API key."""
     return await get_system_health()
 
 @app.get("/health/metrics")
-async def system_metrics():
-    """System performance metrics."""
+async def system_metrics(_auth_ok: bool = Depends(require_system_key)):
+    """System performance metrics. Requires system API key."""
     return await get_system_metrics()
 
 @app.get("/health/degradation")
-async def degradation_status():
-    """Current system degradation status."""
+async def degradation_status(_auth_ok: bool = Depends(require_system_key)):
+    """Current system degradation status. Requires system API key."""
     return get_degradation_status()
 
 @app.get("/health/circuit-breakers")
-async def circuit_breaker_status():
-    """Circuit breaker states."""
+async def circuit_breaker_status(_auth_ok: bool = Depends(require_system_key)):
+    """Circuit breaker states. Requires system API key."""
     return circuit_manager.get_all_states()
 
 @app.get("/health/circuit-breakers/metrics")
-async def circuit_breaker_metrics():
-    """Comprehensive circuit breaker metrics for monitoring."""
+async def circuit_breaker_metrics(_auth_ok: bool = Depends(require_system_key)):
+    """Comprehensive circuit breaker metrics for monitoring. Requires system API key."""
     return circuit_manager.get_all_metrics()
 
 @app.post("/health/circuit-breakers/reset")
-async def reset_circuit_breakers():
-    """Reset all circuit breakers."""
+async def reset_circuit_breakers(_auth_ok: bool = Depends(require_system_key)):
+    """Reset all circuit breakers. Requires system API key."""
     circuit_manager.reset_all()
     return {"status": "success", "message": "All circuit breakers reset"}
 
@@ -4586,11 +4583,23 @@ def get_socketio_app():
     from .socketio.registry import get_socketio_server, register_socketio_server
     sio = get_socketio_server()
     if sio is None:
+        # Parse CORS origins from environment for security
+        cors_origins_env = os.getenv("CORS_ORIGINS", "http://localhost:3000")
+        if cors_origins_env == "*":
+            socketio_cors_origins = "*"
+            logger.warning(
+                "⚠️  SECURITY WARNING: Socket.IO CORS is set to wildcard (*). "
+                "This allows connections from ANY origin. "
+                "For production, set CORS_ORIGINS to specific origins in backend/.env"
+            )
+        else:
+            socketio_cors_origins = [origin.strip() for origin in cors_origins_env.split(",")]
+            logger.info(f"Socket.IO CORS restricted to: {socketio_cors_origins}")
+        
         # Create a server early so the transport endpoints exist before lifespan runs
         sio = socketio.AsyncServer(
             async_mode="asgi",
-            # Allow all origins for Engine.IO/Socket.IO (use string "*")
-            cors_allowed_origins="*",
+            cors_allowed_origins=socketio_cors_origins,
             engineio_logger=True,
             async_handlers=True,
             # Match keepalive settings to avoid premature disconnects during backgrounding

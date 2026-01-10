@@ -4784,13 +4784,21 @@ Please regenerate your reflection following these identity constraints strictly.
                     except Exception:
                         reflection_ns = None
 
+                # SOCKET ROOM COORDINATION (SINGLE-USER ARCHITECTURE):
+                # - socket_room_id: Frontend session_id for socket room targeting (ephemeral)
+                # - user_profile_id: Backend installation_user_id for persistence (canonical)
+                # - Frontend clients join socket rooms using session_id
+                # - We must emit to session_id rooms, not user_profile_id rooms
+                # - Fallback to user_profile_id only if socket_room_id not provided (backward compat)
+                socket_room_id = payload.get('socket_room_id') or payload.get('user_profile_id')
+                
                 emitted_via_namespace = False
                 if reflection_ns is not None:
                     try:
                         await reflection_ns.emit_reflection_event(
                             event_name='reflection_generated',
                             data=payload,
-                            user_id=payload.get('user_profile_id'),
+                            user_id=socket_room_id,
                         )
                         emitted_via_namespace = True
                         logger.info(f"Broadcasted reflection_generated event via namespace for {reflection_id}")

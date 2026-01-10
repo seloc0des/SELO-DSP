@@ -28,7 +28,7 @@ class Reflection(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     embedding = Column(LargeBinary, nullable=True)
-    reflection_metadata = Column(JSONB, default={})
+    reflection_metadata = Column(JSONB, default=dict)
 
     # Relationships
     memories = relationship("ReflectionMemory", back_populates="reflection", cascade="all, delete-orphan")
@@ -137,7 +137,7 @@ class RelationshipQuestionQueue(Base):
     existing_conflicts = Column(JSONB, default=list)
     queued_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     available_at = Column(DateTime(timezone=True), nullable=False)
-    raw_payload = Column(JSONB, default={})
+    raw_payload = Column(JSONB, default=dict)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     delivered_at = Column(DateTime(timezone=True), nullable=True)
     answered_at = Column(DateTime(timezone=True), nullable=True)

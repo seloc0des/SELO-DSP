@@ -21,13 +21,18 @@ const clientInstanceId = `reflect-${Math.random().toString(36).slice(2)}-${Date.
 let intentionalDisconnect = false;
 // Re-init throttling to avoid reconnection storms
 let reinitScheduled = false;
+let inflightInit = null;
+let reinitDelayMs = 1000;
 // Store callbacks for reconnection preservation
 let storedOnReflectionUpdate = null;
 let storedOnConnectionStatus = null;
 const scheduleReinit = (reason = 'unknown') => {
   if (reinitScheduled || isConnecting) return;
+  if (!currentUserId) return;
   reinitScheduled = true;
   logger.warn('Scheduling re-init due to:', reason);
+  const delay = reinitDelayMs;
+  reinitDelayMs = Math.min(reinitDelayMs * 2, 10000);
   setTimeout(() => {
     try {
       if (socket) {
@@ -43,7 +48,7 @@ const scheduleReinit = (reason = 'unknown') => {
     } finally {
       reinitScheduled = false;
     }
-  }, 1000);
+  }, delay);
 };
 
 /**
@@ -98,6 +103,9 @@ export const initReflectionSocket = (userId, onReflectionUpdate, onConnectionSta
     logger.warn('Init aborted: missing userId');
     return null;
   }
+  intentionalDisconnect = false;
+  updateConnectionStatus('connecting');
+  currentUserId = userId;
   // Store callbacks for reconnection preservation
   if (onReflectionUpdate) storedOnReflectionUpdate = onReflectionUpdate;
   if (onConnectionStatus) storedOnConnectionStatus = onConnectionStatus;
@@ -113,13 +121,19 @@ export const initReflectionSocket = (userId, onReflectionUpdate, onConnectionSta
     try { socket.removeAllListeners(); } catch (_) {}
     try { socket.disconnect(); } catch (_) {}
   }
+
+  if (inflightInit) {
+    currentUserId = userId;
+    return socket;
+  }
+  isConnecting = true;
   
   // Define handlers before registration to avoid hoisting issues
   function handleGenerating(data) {
     // Debug logging removed for production
     const payload = {
       status: 'generating',
-      type: data.reflection_type,
+      type: data?.reflection_type || data?.type,
       data
     };
     onReflectionUpdate && onReflectionUpdate(payload);
@@ -131,8 +145,8 @@ export const initReflectionSocket = (userId, onReflectionUpdate, onConnectionSta
   function handleGenerated(data) {
     const payload = {
       status: 'complete',
-      type: data.reflection_type,
-      reflectionId: data.reflection_id,
+      type: data?.reflection_type || data?.type,
+      reflectionId: data?.reflection_id || data?.reflectionId || data?.id,
       data
     };
     onReflectionUpdate && onReflectionUpdate(payload);
@@ -143,11 +157,17 @@ export const initReflectionSocket = (userId, onReflectionUpdate, onConnectionSta
 
   // Connect to reflection namespace after runtime config is available
   // Lazy-init: resolve base URL asynchronously and then connect
-  getApiBaseUrl()
+  inflightInit = getApiBaseUrl()
     .then((API_BASE_URL) => {
+      if (!currentUserId || currentUserId !== userId || intentionalDisconnect) {
+        isConnecting = false;
+        inflightInit = null;
+        intentionalDisconnect = false;
+        updateConnectionStatus('disconnected');
+        return null;
+      }
       // Log the resolved API base URL for diagnostics
       // Debug logging removed for production
-      isConnecting = true;
       socket = io(`${API_BASE_URL}/reflection`, {
         // Explicitly match backend Socket.IO path and force pure WebSocket (no polling)
         path: '/socket.io',
@@ -170,6 +190,8 @@ export const initReflectionSocket = (userId, onReflectionUpdate, onConnectionSta
         onConnectionStatus && onConnectionStatus('connected'); // Backward compatibility
         logger.debug('Connected', { clientInstanceId, sid: socket.id });
         isConnecting = false;
+        inflightInit = null;
+        reinitDelayMs = 1000;
         // Authenticate with the socket
         socket.emit('authenticate', { user_id: userId });
       });
@@ -180,6 +202,7 @@ export const initReflectionSocket = (userId, onReflectionUpdate, onConnectionSta
         onConnectionStatus && onConnectionStatus('disconnected'); // Backward compatibility
         logger.debug('Disconnected', { clientInstanceId, reason });
         isConnecting = false;
+        inflightInit = null;
         // If this was an intentional client disconnect (component unmount/navigation), do not re-init
         if (intentionalDisconnect) {
           intentionalDisconnect = false; // reset flag
@@ -196,6 +219,7 @@ export const initReflectionSocket = (userId, onReflectionUpdate, onConnectionSta
         logger.error('WebSocket connect_error:', err?.message || err);
         updateConnectionStatus('polling');
         isConnecting = false;
+        inflightInit = null;
         // Common after restart or invalid sid; perform a clean re-init
         scheduleReinit('connect_error');
       });
@@ -207,12 +231,14 @@ export const initReflectionSocket = (userId, onReflectionUpdate, onConnectionSta
         logger.error('WebSocket reconnect_error', err?.message || err);
         updateConnectionStatus('polling');
         isConnecting = false;
+        inflightInit = null;
         scheduleReinit('reconnect_error');
       });
       socket.io.on('reconnect_failed', () => {
         logger.error('WebSocket reconnect_failed');
         updateConnectionStatus('offline');
         isConnecting = false;
+        inflightInit = null;
         scheduleReinit('reconnect_failed');
       });
       socket.on('ping', () => {
@@ -228,6 +254,7 @@ export const initReflectionSocket = (userId, onReflectionUpdate, onConnectionSta
       
       socket.on('error', (data) => {
         logger.error('WebSocket error', data);
+        inflightInit = null;
         // Some servers emit generic error on invalid sid; re-init defensively
         scheduleReinit('socket_error');
       });
@@ -238,6 +265,9 @@ export const initReflectionSocket = (userId, onReflectionUpdate, onConnectionSta
     .catch((e) => {
       logger.error('Failed to initialize socket due to config error:', e);
       updateConnectionStatus('offline');
+      isConnecting = false;
+      inflightInit = null;
+      return null;
     });
   
   return socket;
@@ -247,12 +277,16 @@ export const initReflectionSocket = (userId, onReflectionUpdate, onConnectionSta
  * Disconnect WebSocket connection
  */
 export const disconnectReflectionSocket = () => {
+  intentionalDisconnect = true;
+  currentUserId = null;
   if (socket) {
-    intentionalDisconnect = true;
     socket.disconnect();
-    socket = null;
-    updateConnectionStatus('disconnected');
   }
+  socket = null;
+  inflightInit = null;
+  isConnecting = false;
+  reinitDelayMs = 1000;
+  updateConnectionStatus('disconnected');
 };
 
 // Ensure we have a connected socket for a given user

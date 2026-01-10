@@ -56,11 +56,35 @@ class EpisodeBuilder:
         episode_data: Dict[str, Any],
         trigger_reason: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Persist an episode payload produced by the LLM-driven synthesis pipeline."""
+        """Persist an episode payload produced by the LLM-driven synthesis pipeline.
+        
+        Includes deduplication check to prevent creating duplicate episodes.
+        """
 
         title = (episode_data.get("title") or "Shared moment").strip()
         narrative_text = (episode_data.get("narrative_text") or "").strip()
         summary = (episode_data.get("summary") or "").strip() or None
+        
+        # Check for similar recent episodes to prevent duplicates
+        if narrative_text:
+            try:
+                similar_episodes = await self._episode_repo.find_similar_recent_episodes(
+                    persona_id=persona_id,
+                    narrative_text=narrative_text,
+                    within_hours=24
+                )
+                if similar_episodes:
+                    most_similar = similar_episodes[0]
+                    similarity = most_similar.get("similarity_score", 0.0)
+                    logger.info(
+                        "Found similar episode (similarity=%.2f): %s. Skipping duplicate.",
+                        similarity,
+                        most_similar.get("id")
+                    )
+                    return most_similar
+            except Exception as dedupe_err:
+                logger.warning("Episode deduplication check failed: %s", dedupe_err)
+                # Continue with creation if deduplication fails
 
         emotion_tags = episode_data.get("emotion_tags") or []
         participants = episode_data.get("participants") or ["User", "SELO"]
@@ -98,9 +122,13 @@ class EpisodeBuilder:
         if isinstance(end_time, datetime):
             episode_payload["end_time"] = _ensure_utc(end_time)
 
-        episode = await self._episode_repo.create_episode(episode_payload)
-        logger.info("Persisted autobiographical episode %s", episode.get("id"))
-        return episode
+        try:
+            episode = await self._episode_repo.create_episode(episode_payload)
+            logger.info("Persisted new autobiographical episode %s", episode.get("id"))
+            return episode
+        except Exception as create_err:
+            logger.error("Failed to create episode: %s", create_err, exc_info=True)
+            raise
 
     async def list_recent_episodes(
         self,
