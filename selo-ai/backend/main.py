@@ -21,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 from .utils.datetime import utc_now, utc_iso
 from .llm.dual_llm_config import get_llm_model
 from .llm.response_validator import ResponseValidator
+from .api.security import require_system_key
 import pathlib
 from collections import OrderedDict
 from .config.performance_config import get_performance_config
@@ -4551,8 +4552,6 @@ async def fix_faiss_installation():
     }
 
 # Event publishing endpoint
-from .api.security import require_system_key
-
 @app.post("/events/publish")
 async def publish_event(
     request: Request,
