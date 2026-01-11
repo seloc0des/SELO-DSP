@@ -40,7 +40,7 @@ class VectorStore:
                  embedding_dim: int = None,
                  store_path: Optional[str] = None,
                  llm_controller=None,
-                 use_gpu: bool = True):
+                 use_gpu: bool = False):
         """
         Initialize the vector store.
         
@@ -69,16 +69,13 @@ class VectorStore:
         self.embedding_dim = embedding_dim or (env_dim if env_dim > 0 else default_dim)
         self.store_path = store_path
         self.llm_controller = llm_controller
-        self.use_gpu = use_gpu
+        # Force CPU for FAISS - GPU reserved for Ollama LLM inference
+        self.use_gpu = False
         
-        # GPU configuration
-        self.device = self._setup_device()
-        # Check for None before accessing .type to prevent AttributeError when PyTorch unavailable
-        self.gpu_available = (
-            self.device is not None and 
-            TORCH_AVAILABLE and 
-            self.device.type == 'cuda'
-        )
+        # CPU-only configuration for FAISS
+        self.device = torch.device('cpu') if TORCH_AVAILABLE else None
+        self.gpu_available = False
+        logger.info("FAISS configured for CPU-only mode (GPU reserved for Ollama)")
         
         # Initialize storage structures
         self.index = None
@@ -146,68 +143,10 @@ class VectorStore:
                         self.gpu_available = False
                         return
                 
-                # Try to use GPU if available
-                if self.gpu_available:
-                    try:
-                        logger.info("Attempting to initialize FAISS GPU resources...")
-                        
-                        # Check CUDA context and environment
-                        import os
-                        cuda_visible = os.environ.get('CUDA_VISIBLE_DEVICES', 'not_set')
-                        
-                        # Use threading to prevent hanging on GPU initialization
-                        import threading
-                        
-                        gpu_init_result = [None]
-                        gpu_init_error = [None]
-                        
-                        def gpu_init():
-                            try:
-                                # Create GPU resources with conservative memory settings
-                                gpu_resources = faiss.StandardGpuResources()
-                                
-                                # Set smaller temporary memory allocation (64MB instead of 256MB)
-                                # This reduces the pinned host memory requirement
-                                gpu_resources.setTempMemory(64 * 1024 * 1024)  # 64MB
-                                
-                                # Test basic GPU functionality
-                                test_index = faiss.IndexFlatL2(64)  # Small test index
-                                gpu_index = faiss.index_cpu_to_gpu(gpu_resources, 0, test_index)
-                                gpu_init_result[0] = gpu_resources
-                            except Exception as e:
-                                gpu_init_error[0] = e
-                        
-                        # Run GPU initialization with timeout
-                        init_thread = threading.Thread(target=gpu_init)
-                        init_thread.daemon = True
-                        init_thread.start()
-                        init_thread.join(timeout=10.0)  # 10 second timeout
-                        
-                        if init_thread.is_alive():
-                            logger.warning("FAISS GPU initialization timed out - falling back to CPU")
-                            self.use_gpu = False
-                            self.gpu_resources = None
-                        elif gpu_init_error[0]:
-                            logger.warning(f"FAISS GPU initialization failed: {gpu_init_error[0]}")
-                            logger.warning("Falling back to CPU-only mode")
-                            self.use_gpu = False
-                            self.gpu_resources = None
-                        elif gpu_init_result[0]:
-                            self.gpu_resources = gpu_init_result[0]
-                            logger.info("✅ FAISS GPU initialization successful")
-                        else:
-                            logger.warning("FAISS GPU initialization returned no result - falling back to CPU")
-                            self.use_gpu = False
-                            self.gpu_resources = None
-                    except Exception as e:
-                        logger.warning(f"FAISS GPU setup failed: {e}")
-                        logger.warning("Falling back to CPU-only mode")
-                        self.use_gpu = False
-                        self.gpu_resources = None
-                else:
-                    logger.info("FAISS GPU disabled or CUDA not available - using CPU mode")
-                    self.use_gpu = False
-                    self.gpu_resources = None
+                # FAISS forced to CPU mode - GPU reserved for Ollama
+                logger.info("FAISS using CPU mode (GPU reserved for Ollama LLM inference)")
+                self.use_gpu = False
+                self.gpu_resources = None
                     
                 # Load existing index if available
                 if self.store_path and os.path.exists(self.store_path):

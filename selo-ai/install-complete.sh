@@ -1395,9 +1395,9 @@ OVREOF
         fi
         
         sudo bash -c "cat >> '$OL_OVERRIDE'" <<OVREOF
-# GPU Configuration - maximize VRAM usage, minimize CPU load
+# GPU Configuration - force all layers to GPU (FAISS uses CPU)
 Environment=OLLAMA_NUM_GPU=1
-Environment=OLLAMA_GPU_LAYERS=-1
+Environment=OLLAMA_GPU_LAYERS=999
 
 # VRAM Optimization - use maximum available VRAM
 Environment=OLLAMA_MAX_LOADED_MODELS=${max_loaded_models:-3}
@@ -1829,8 +1829,8 @@ export CONVERSATIONAL_MODEL_VAL
         grep -q '^OLLAMA_NUM_THREAD=' "$SCRIPT_DIR/backend/.env" || echo "OLLAMA_NUM_THREAD=${CPU_THREADS}" >> "$SCRIPT_DIR/backend/.env"
         if $CUDA_ENABLED; then
           grep -q '^OLLAMA_NUM_GPU=' "$SCRIPT_DIR/backend/.env" || echo "OLLAMA_NUM_GPU=1" >> "$SCRIPT_DIR/backend/.env"
-          # Seed a higher default GPU offload depth for dedicated 8GB GPUs; users can override
-          grep -q '^OLLAMA_GPU_LAYERS=' "$SCRIPT_DIR/backend/.env" || echo "OLLAMA_GPU_LAYERS=72" >> "$SCRIPT_DIR/backend/.env"
+          # Force all layers to GPU for maximum performance (FAISS uses CPU)
+          grep -q '^OLLAMA_GPU_LAYERS=' "$SCRIPT_DIR/backend/.env" || echo "OLLAMA_GPU_LAYERS=999" >> "$SCRIPT_DIR/backend/.env"
           # Add CUDA environment variables for GPU acceleration
           grep -q '^CUDA_VISIBLE_DEVICES=' "$SCRIPT_DIR/backend/.env" || echo "CUDA_VISIBLE_DEVICES=0" >> "$SCRIPT_DIR/backend/.env"
           grep -q '^CUDA_DEVICE_ORDER=' "$SCRIPT_DIR/backend/.env" || echo "CUDA_DEVICE_ORDER=PCI_BUS_ID" >> "$SCRIPT_DIR/backend/.env"
@@ -1890,8 +1890,8 @@ export CONVERSATIONAL_MODEL_VAL
         grep -q '^OLLAMA_NUM_THREAD=' /etc/selo-ai/environment || echo "OLLAMA_NUM_THREAD=${CPU_THREADS}" | sudo tee -a /etc/selo-ai/environment >/dev/null
         if $CUDA_ENABLED; then
           grep -q '^OLLAMA_NUM_GPU=' /etc/selo-ai/environment || echo "OLLAMA_NUM_GPU=1" | sudo tee -a /etc/selo-ai/environment >/dev/null
-          # Seed default GPU offload depth; user may override later
-          grep -q '^OLLAMA_GPU_LAYERS=' /etc/selo-ai/environment || echo "OLLAMA_GPU_LAYERS=72" | sudo tee -a /etc/selo-ai/environment >/dev/null
+          # Force all layers to GPU for maximum performance (FAISS uses CPU)
+          grep -q '^OLLAMA_GPU_LAYERS=' /etc/selo-ai/environment || echo "OLLAMA_GPU_LAYERS=999" | sudo tee -a /etc/selo-ai/environment >/dev/null
           # Add CUDA environment variables for GPU acceleration
           grep -q '^CUDA_VISIBLE_DEVICES=' /etc/selo-ai/environment || echo "CUDA_VISIBLE_DEVICES=0" | sudo tee -a /etc/selo-ai/environment >/dev/null
           grep -q '^CUDA_DEVICE_ORDER=' /etc/selo-ai/environment || echo "CUDA_DEVICE_ORDER=PCI_BUS_ID" | sudo tee -a /etc/selo-ai/environment >/dev/null

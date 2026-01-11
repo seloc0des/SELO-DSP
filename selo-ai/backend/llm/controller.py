@@ -368,13 +368,15 @@ class LLMController:
                         }
                         if opt_num_thread is not None:
                             options_payload["num_thread"] = opt_num_thread
-                        # Prefer explicit GPU usage: if env not set, ask Ollama to auto-use GPU(s)
+                        # Force GPU usage for Ollama (FAISS uses CPU)
                         if opt_num_gpu is not None:
                             options_payload["num_gpu"] = opt_num_gpu
                         else:
-                            options_payload["num_gpu"] = -1  # auto-select GPU(s) when available
+                            options_payload["num_gpu"] = 1  # Force use of first GPU
                         if opt_gpu_layers is not None:
                             options_payload["gpu_layers"] = opt_gpu_layers
+                        else:
+                            options_payload["gpu_layers"] = 999  # Load all layers on GPU
                         
                         # Log GPU settings for performance diagnostics
                         logger.debug(f"LLM request options: num_gpu={options_payload.get('num_gpu')}, gpu_layers={options_payload.get('gpu_layers')}, num_ctx={num_ctx}, num_predict={num_predict}")
@@ -593,7 +595,7 @@ class LLMController:
                             except Exception:
                                 return None
                         opt_num_gpu = _env_opt_int("OLLAMA_NUM_GPU")
-                        emb_options = {"num_gpu": opt_num_gpu if opt_num_gpu is not None else -1}
+                        emb_options = {"num_gpu": opt_num_gpu if opt_num_gpu is not None else 1}
                         resp = await client.post(
                             f"{base_url}/api/embeddings",
                             json={
