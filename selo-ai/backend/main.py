@@ -3353,7 +3353,7 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
         user_name_from_memory = None  # Extract user's name to prevent identity confusion
         try:
             # Get recent high-importance memories for this user to inform autonomous decisions
-            user_memories = await conversation_repo.get_memories(str(user_id), importance_threshold=7, limit=5)
+            user_memories = await conversation_repo.get_memories(str(installation_user_id), importance_threshold=7, limit=5)
             if user_memories:
                 memory_summaries = []
                 for memory in user_memories:
