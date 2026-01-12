@@ -1823,6 +1823,9 @@ export CONVERSATIONAL_MODEL_VAL
         fi
         grep -q '^PREWARM_MODELS=' "$SCRIPT_DIR/backend/.env" || echo "PREWARM_MODELS=true" >> "$SCRIPT_DIR/backend/.env"
         grep -q '^KEEPALIVE_ENABLED=' "$SCRIPT_DIR/backend/.env" || echo "KEEPALIVE_ENABLED=true" >> "$SCRIPT_DIR/backend/.env"
+        # Keep prewarm enabled but avoid concurrent GPU pressure by limiting residency/parallelism
+        grep -q '^OLLAMA_MAX_LOADED_MODELS=' "$SCRIPT_DIR/backend/.env" || echo "OLLAMA_MAX_LOADED_MODELS=1" >> "$SCRIPT_DIR/backend/.env"
+        grep -q '^OLLAMA_NUM_PARALLEL=' "$SCRIPT_DIR/backend/.env" || echo "OLLAMA_NUM_PARALLEL=1" >> "$SCRIPT_DIR/backend/.env"
         grep -q '^PREWARM_INTERVAL_MIN=' "$SCRIPT_DIR/backend/.env" || echo "PREWARM_INTERVAL_MIN=5" >> "$SCRIPT_DIR/backend/.env"
         # CUDA-related defaults (only add if missing so users can override)
         CPU_THREADS=$( (command -v nproc >/dev/null 2>&1 && nproc) || echo 8 )
@@ -1884,6 +1887,9 @@ export CONVERSATIONAL_MODEL_VAL
         fi
         grep -q '^PREWARM_MODELS=' /etc/selo-ai/environment || echo "PREWARM_MODELS=true" | sudo tee -a /etc/selo-ai/environment >/dev/null
         grep -q '^KEEPALIVE_ENABLED=' /etc/selo-ai/environment || echo "KEEPALIVE_ENABLED=true" | sudo tee -a /etc/selo-ai/environment >/dev/null
+        # Keep prewarm enabled but constrain concurrency/residency to avoid GPU OOM during startup
+        grep -q '^OLLAMA_MAX_LOADED_MODELS=' /etc/selo-ai/environment || echo "OLLAMA_MAX_LOADED_MODELS=1" | sudo tee -a /etc/selo-ai/environment >/dev/null
+        grep -q '^OLLAMA_NUM_PARALLEL=' /etc/selo-ai/environment || echo "OLLAMA_NUM_PARALLEL=1" | sudo tee -a /etc/selo-ai/environment >/dev/null
         grep -q '^PREWARM_INTERVAL_MIN=' /etc/selo-ai/environment || echo "PREWARM_INTERVAL_MIN=5" | sudo tee -a /etc/selo-ai/environment >/dev/null
         # CUDA-related defaults (only add if missing so users can override)
         CPU_THREADS=$( (command -v nproc >/dev/null 2>&1 && nproc) || echo 8 )
