@@ -102,6 +102,31 @@ class LLMRouter:
         # Use bounded deque to prevent memory leak in long-running deployments
         self.usage_log: deque = deque(maxlen=MAX_USAGE_LOG_SIZE)
 
+    async def generate(
+        self,
+        *,
+        prompt: str,
+        model_type: str = "analytical",
+        **kwargs,
+    ) -> Any:
+        """
+        Backward-compatible helper used by legacy callers.
+        Delegates to `route` with the correct task_type based on model_type.
+        """
+        normalized = (model_type or "").lower()
+        if normalized in ("chat", "conversational", "conversation"):
+            task_type = "chat"
+        elif normalized in ("reflection", "reflect"):
+            task_type = "reflection"
+        else:
+            task_type = "analytical"
+
+        routed = await self.route(task_type=task_type, prompt=prompt, **kwargs)
+        # `route` returns dicts for non-streaming paths; legacy callers expect a string
+        if isinstance(routed, dict) and "content" in routed:
+            return routed.get("content", "")
+        return routed
+
     async def route(self, *, task_type: Literal["chat","persona_prompt","persona_evolve","sdl","reflection","reflection_classifier","embedding"], 
                    **kwargs) -> Dict[str, Any]:
         """
