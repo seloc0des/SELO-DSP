@@ -2568,6 +2568,8 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
     #   maintaining a single authoritative user identity in the database
     user = await user_repo.get_or_create_default_user()
     installation_user_id = user.id
+    # Alias for legacy references inside this handler (single-user install)
+    user_id = installation_user_id
     
     # OPTIMIZATION: Fetch persona once here instead of 3x throughout request
     persona_repo = app.state.services.get("persona_repo")
@@ -3811,7 +3813,7 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
         if episode_trigger_manager:
             background_tasks.add_task(
                 episode_trigger_manager.check_conversation_milestone,
-                user_id=user_id,
+                user_id=installation_user_id,
                 persona_id=None,  # Will be resolved automatically
             )
         
