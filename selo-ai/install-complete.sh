@@ -1809,12 +1809,12 @@ export CONVERSATIONAL_MODEL_VAL
         grep -q '^CHAT_TEMPERATURE=' "$SCRIPT_DIR/backend/.env" || echo "CHAT_TEMPERATURE=0.6" >> "$SCRIPT_DIR/backend/.env"
         grep -q '^CHAT_TOP_K=' "$SCRIPT_DIR/backend/.env" || echo "CHAT_TOP_K=40" >> "$SCRIPT_DIR/backend/.env"
         grep -q '^CHAT_TOP_P=' "$SCRIPT_DIR/backend/.env" || echo "CHAT_TOP_P=0.9" >> "$SCRIPT_DIR/backend/.env"
-        grep -q '^CHAT_NUM_CTX=' "$SCRIPT_DIR/backend/.env" || echo "CHAT_NUM_CTX=12288" >> "$SCRIPT_DIR/backend/.env"
-        # Unbounded reflections by default (prompt-constrained). User can override post-install.
+        grep -q '^CHAT_NUM_CTX=' "$SCRIPT_DIR/backend/.env" || echo "CHAT_NUM_CTX=8192" >> "$SCRIPT_DIR/backend/.env"
+        # Bounded reflections to match service defaults (consistent with /etc/selo-ai/environment)
         if grep -q '^REFLECTION_NUM_PREDICT=' "$SCRIPT_DIR/backend/.env"; then
-          sed -i -E "s|^REFLECTION_NUM_PREDICT=.*|REFLECTION_NUM_PREDICT=0|" "$SCRIPT_DIR/backend/.env" || true
+          sed -i -E "s|^REFLECTION_NUM_PREDICT=.*|REFLECTION_NUM_PREDICT=640|" "$SCRIPT_DIR/backend/.env" || true
         else
-          echo "REFLECTION_NUM_PREDICT=0" >> "$SCRIPT_DIR/backend/.env"
+          echo "REFLECTION_NUM_PREDICT=640" >> "$SCRIPT_DIR/backend/.env"
         fi
         if grep -q '^REFLECTION_TEMPERATURE=' "$SCRIPT_DIR/backend/.env"; then
           sed -i -E "s|^REFLECTION_TEMPERATURE=.*|REFLECTION_TEMPERATURE=0.35|" "$SCRIPT_DIR/backend/.env" || true
@@ -1832,8 +1832,8 @@ export CONVERSATIONAL_MODEL_VAL
         grep -q '^OLLAMA_NUM_THREAD=' "$SCRIPT_DIR/backend/.env" || echo "OLLAMA_NUM_THREAD=${CPU_THREADS}" >> "$SCRIPT_DIR/backend/.env"
         if $CUDA_ENABLED; then
           grep -q '^OLLAMA_NUM_GPU=' "$SCRIPT_DIR/backend/.env" || echo "OLLAMA_NUM_GPU=1" >> "$SCRIPT_DIR/backend/.env"
-          # Force all layers to GPU for maximum performance (FAISS uses CPU)
-          grep -q '^OLLAMA_GPU_LAYERS=' "$SCRIPT_DIR/backend/.env" || echo "OLLAMA_GPU_LAYERS=999" >> "$SCRIPT_DIR/backend/.env"
+          # Prefer lighter default residency to reduce load times/VRAM pressure; users can raise as needed
+          grep -q '^OLLAMA_GPU_LAYERS=' "$SCRIPT_DIR/backend/.env" || echo "OLLAMA_GPU_LAYERS=80" >> "$SCRIPT_DIR/backend/.env"
           # Add CUDA environment variables for GPU acceleration
           grep -q '^CUDA_VISIBLE_DEVICES=' "$SCRIPT_DIR/backend/.env" || echo "CUDA_VISIBLE_DEVICES=0" >> "$SCRIPT_DIR/backend/.env"
           grep -q '^CUDA_DEVICE_ORDER=' "$SCRIPT_DIR/backend/.env" || echo "CUDA_DEVICE_ORDER=PCI_BUS_ID" >> "$SCRIPT_DIR/backend/.env"
@@ -1871,7 +1871,7 @@ export CONVERSATIONAL_MODEL_VAL
         grep -q '^REFLECTION_REQUIRED=' /etc/selo-ai/environment || echo "REFLECTION_REQUIRED=true" | sudo tee -a /etc/selo-ai/environment >/dev/null
         sudo grep -q '^CHAT_TOP_K=' /etc/selo-ai/environment || echo "CHAT_TOP_K=40" | sudo tee -a /etc/selo-ai/environment >/dev/null
         sudo grep -q '^CHAT_TOP_P=' /etc/selo-ai/environment || echo "CHAT_TOP_P=0.9" | sudo tee -a /etc/selo-ai/environment >/dev/null
-        sudo grep -q '^CHAT_NUM_CTX=' /etc/selo-ai/environment || echo "CHAT_NUM_CTX=12288" | sudo tee -a /etc/selo-ai/environment >/dev/null
+        sudo grep -q '^CHAT_NUM_CTX=' /etc/selo-ai/environment || echo "CHAT_NUM_CTX=8192" | sudo tee -a /etc/selo-ai/environment >/dev/null
         if sudo grep -q '^REFLECTION_NUM_PREDICT=' /etc/selo-ai/environment; then
           current_predict=$(sudo awk -F= '/^REFLECTION_NUM_PREDICT=/{print $2; exit}' /etc/selo-ai/environment)
           if [ -z "$current_predict" ] || ! awk -v cur="$current_predict" 'BEGIN{exit(cur >= 640 ? 0 : 1)}'; then
@@ -1896,8 +1896,8 @@ export CONVERSATIONAL_MODEL_VAL
         grep -q '^OLLAMA_NUM_THREAD=' /etc/selo-ai/environment || echo "OLLAMA_NUM_THREAD=${CPU_THREADS}" | sudo tee -a /etc/selo-ai/environment >/dev/null
         if $CUDA_ENABLED; then
           grep -q '^OLLAMA_NUM_GPU=' /etc/selo-ai/environment || echo "OLLAMA_NUM_GPU=1" | sudo tee -a /etc/selo-ai/environment >/dev/null
-          # Force all layers to GPU for maximum performance (FAISS uses CPU)
-          grep -q '^OLLAMA_GPU_LAYERS=' /etc/selo-ai/environment || echo "OLLAMA_GPU_LAYERS=999" | sudo tee -a /etc/selo-ai/environment >/dev/null
+          # Prefer lighter default residency to reduce load times/VRAM pressure; users can raise as needed
+          grep -q '^OLLAMA_GPU_LAYERS=' /etc/selo-ai/environment || echo "OLLAMA_GPU_LAYERS=80" | sudo tee -a /etc/selo-ai/environment >/dev/null
           # Add CUDA environment variables for GPU acceleration
           grep -q '^CUDA_VISIBLE_DEVICES=' /etc/selo-ai/environment || echo "CUDA_VISIBLE_DEVICES=0" | sudo tee -a /etc/selo-ai/environment >/dev/null
           grep -q '^CUDA_DEVICE_ORDER=' /etc/selo-ai/environment || echo "CUDA_DEVICE_ORDER=PCI_BUS_ID" | sudo tee -a /etc/selo-ai/environment >/dev/null
