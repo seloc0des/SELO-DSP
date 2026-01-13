@@ -19,6 +19,8 @@ const Chat = ({ userId }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [apiBase, setApiBase] = useState(null);
   const [reflectionConnectionStatus, setReflectionConnectionStatus] = useState(() => reflectionService.getConnectionStatus());
+  // Lightweight socket debug log (last 50 events)
+  const [socketDebugLog, setSocketDebugLog] = useState([]);
   // Map of turnId -> assistant message content waiting for matching reflection
   const pendingAnswersRef = useRef(new Map());
   const reflectionsSeenRef = useRef(new Set());
@@ -29,6 +31,21 @@ const Chat = ({ userId }) => {
   const streamingBuffersRef = useRef(new Map());
   const releasedTurnsRef = useRef(new Set());
   const holdForReflectionRef = useRef(true);
+  // Track join readiness to avoid losing chat_complete when POST happens before the socket joins its room
+  const joinReadyRef = useRef({ promise: Promise.resolve(true), resolve: () => {} });
+  const resetJoinPromise = useCallback(() => {
+    if (joinReadyRef.current?.timeoutId) {
+      clearTimeout(joinReadyRef.current.timeoutId);
+    }
+    let resolver = () => {};
+    const promise = new Promise((resolve) => {
+      resolver = resolve;
+      // Safety timeout: unblock after 2s to avoid hanging the UI
+      const timeoutId = setTimeout(() => resolve(false), 2000);
+      joinReadyRef.current.timeoutId = timeoutId;
+    });
+    joinReadyRef.current = { promise, resolve: resolver };
+  }, []);
 
   const setPendingAnswer = useCallback((turnId, { content, timestamp } = {}) => {
     if (!turnId) return;
@@ -67,6 +84,12 @@ const Chat = ({ userId }) => {
   }, [setMessages]);
   
   const messagesEndRef = useRef(null);
+  const appendSocketDebug = useCallback((entry) => {
+    setSocketDebugLog((prev) => {
+      const next = [...prev, { ts: new Date().toISOString(), ...entry }];
+      return next.slice(-50);
+    });
+  }, []);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -234,6 +257,8 @@ const Chat = ({ userId }) => {
   useEffect(() => {
     if (!sessionId || !apiBase) return;
 
+    resetJoinPromise();
+
     const socket = io(`${trimTrailingSlash(apiBase)}/chat`, {
       path: '/socket.io',
       transports: ['websocket'],
@@ -248,8 +273,16 @@ const Chat = ({ userId }) => {
 
     socket.on('connect', () => {
       try {
+        appendSocketDebug({ event: 'connect' });
         socket.emit('join', { user_id: sessionId });
       } catch (_) {}
+    });
+
+    socket.on('joined', () => {
+      try {
+        joinReadyRef.current.resolve(true);
+      } catch (_) {}
+      appendSocketDebug({ event: 'joined' });
     });
 
     socket.on('chat_chunk', (payload = {}) => {
@@ -257,6 +290,8 @@ const Chat = ({ userId }) => {
       const chunk = payload.chunk;
       if (!turnId || typeof chunk !== 'string' || chunk.length === 0) return;
       if (releasedTurnsRef.current.has(turnId)) return;
+
+      appendSocketDebug({ event: 'chat_chunk', turnId, final: !!payload.final });
 
       const previous = streamingBuffersRef.current.get(turnId) || '';
       const combined = previous + chunk;
@@ -281,6 +316,8 @@ const Chat = ({ userId }) => {
       if (!turnId) return;
       if (releasedTurnsRef.current.has(turnId)) return;
 
+      appendSocketDebug({ event: 'chat_complete', turnId });
+
       const content = typeof payload.content === 'string' ? payload.content : '';
       const timestamp = payload.timestamp || new Date().toISOString();
 
@@ -295,6 +332,7 @@ const Chat = ({ userId }) => {
 
     return () => {
       socket.off('connect');
+      socket.off('joined');
       socket.off('chat_chunk');
       socket.off('chat_complete');
       try { socket.disconnect(); } catch (_) {}
@@ -302,8 +340,11 @@ const Chat = ({ userId }) => {
         chatSocketRef.current = null;
       }
       streamingBuffersRef.current.clear();
+      if (joinReadyRef.current?.timeoutId) {
+        clearTimeout(joinReadyRef.current.timeoutId);
+      }
     };
-  }, [sessionId, apiBase, flushPendingAnswer, setPendingAnswer]);
+  }, [sessionId, apiBase, flushPendingAnswer, setPendingAnswer, resetJoinPromise]);
 
   const clearConversation = () => {
     setMessages([]);
@@ -326,6 +367,14 @@ const Chat = ({ userId }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!input.trim() || isLoading || !apiBase || !sessionId) return;
+
+    // Ensure the chat socket has joined its room before sending the HTTP request
+    try {
+      const joined = await joinReadyRef.current.promise;
+      if (!joined) {
+        logger.warn('Proceeding without confirmed chat join; response may be delayed.');
+      }
+    } catch (_) {}
 
     const nowIso = new Date().toISOString();
     const userMessage = { role: 'user', content: input, timestamp: nowIso };
