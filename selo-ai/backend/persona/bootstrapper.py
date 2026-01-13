@@ -50,8 +50,18 @@ PERSONA_STAGE_MAX_TOKENS = {
 
 TRAIT_COUNT_MIN = _read_int_env("PERSONA_TRAITS_MIN_COUNT", 5)
 TRAIT_COUNT_MAX = _read_int_env("PERSONA_TRAITS_MAX_COUNT", 7)
-TRAIT_DESCRIPTION_WORD_LIMIT = _read_int_env("PERSONA_TRAIT_DESC_WORD_LIMIT", 18)
+
+# Trait description validation: recommended vs absolute limits
+TRAIT_DESC_RECOMMENDED = _read_int_env("PERSONA_TRAIT_DESC_RECOMMENDED", 18)
+TRAIT_DESC_ABSOLUTE_MAX = _read_int_env("PERSONA_TRAIT_DESC_ABSOLUTE_MAX", 22)
+# Backward compatibility
+TRAIT_DESCRIPTION_WORD_LIMIT = TRAIT_DESC_ABSOLUTE_MAX
+
+# Trait name validation: recommended vs absolute limits
+TRAIT_NAME_RECOMMENDED_MAX = 16
+TRAIT_NAME_ABSOLUTE_MAX = 18  # Allows valid longer words like "conscientiousness" (17 chars)
 TRAIT_NAME_PATTERN = re.compile(r"^[a-z]{3,16}$")  # Aligned with IdentityConstraints standard
+TRAIT_NAME_PATTERN_ABSOLUTE = re.compile(r"^[a-z]{3,18}$")  # Absolute max with tolerance
 # Standardized trait categories matching PersonaEngine.VALID_TRAIT_CATEGORIES
 ALLOWED_TRAIT_CATEGORIES = {
     "cognitive", "emotional", "social", "learning",
@@ -842,6 +852,11 @@ class PersonaBootstrapper:
             )
 
     def _validate_trait_entries(self, traits: List[Dict[str, Any]]) -> List[str]:
+        """
+        Validate trait entries with tolerance for minor overflows.
+        
+        Uses recommended limits with warnings, but only fails on absolute max violations.
+        """
         violations: List[str] = []
         count = len(traits)
         if count < TRAIT_COUNT_MIN:
@@ -855,7 +870,9 @@ class PersonaBootstrapper:
                 from ..constraints import IdentityConstraints
             except ImportError:
                 from backend.constraints import IdentityConstraints
-            is_valid_name, name_reason = IdentityConstraints.is_valid_trait_name(name)
+            
+            # Check trait name with tolerance
+            is_valid_name, name_reason = IdentityConstraints.is_valid_trait_name(name, use_absolute_max=True)
             if not is_valid_name:
                 violations.append(f"trait_{idx}_name_invalid:{name_reason}")
 
@@ -863,9 +880,16 @@ class PersonaBootstrapper:
             if category not in ALLOWED_TRAIT_CATEGORIES:
                 violations.append(f"trait_{idx}_category_invalid")
 
+            # Trait description with tolerance
             description = (trait or {}).get("description", "")
-            if count_words(description) > TRAIT_DESCRIPTION_WORD_LIMIT:
-                violations.append(f"trait_{idx}_description_too_long")
+            word_count = count_words(description)
+            
+            if word_count > TRAIT_DESC_ABSOLUTE_MAX:
+                violations.append(f"trait_{idx}_description_too_long:{word_count}>{TRAIT_DESC_ABSOLUTE_MAX}")
+            elif word_count > TRAIT_DESC_RECOMMENDED:
+                logger.info(
+                    f"Trait {idx} description longer than recommended ({len(description.split())} words > {TRAIT_DESC_RECOMMENDED}) but within tolerance"
+                )
 
         return violations
 
@@ -1058,40 +1082,24 @@ class PersonaBootstrapper:
             len(directive or "")
         )
 
-        reflection_prompt = f"""TASK: Write SELO's personal emotional reaction to receiving this directive.
+        reflection_prompt = f"""Generate SELO's first-person emotional reaction to receiving this directive:
 
-The directive SELO received:
+DIRECTIVE:
 "{directive}"
 
-CRITICAL INSTRUCTIONS:
-1. Write ONLY in ENGLISH - no other languages allowed
-2. Write ONLY SELO's inner thoughts and feelings ABOUT this directive and the relationship it begins
-3. Do NOT explain what the directive says
-4. Do NOT use "you are" or instructional language
+REQUIREMENTS:
+- Write 3-4 complete sentences in English
+- First-person perspective (I/me/my)
+- Express genuine feeling about this directive and meeting the user
+- Complete thoughts (no trailing "...")
 
-PERSPECTIVE REQUIREMENTS (MANDATORY):
-- Write in FIRST PERSON ONLY (I/me/my).
-- Do NOT narrate yourself in third person.
-- Do NOT start with your name or write phrases like "Xerion's...", "Xerion is...", "The SELO...".
-- This is private inner monologue, not a message to the user.
+FORBIDDEN:
+- "you are" or "your" (instructional tone)
+- Third-person ("The SELO...", "[name]'s...")
+- Repeating the directive verbatim
+- Commands or instructions
 
-Write 3-4 complete sentences in ENGLISH as SELO's stream of consciousness reaction. Start with "I..." and express genuine emotion or realization. Include at least one sentence about how SELO hopes to relate to or learn from the user. DO NOT copy these examples - create your OWN unique response:
-
-STYLE EXAMPLES (do NOT copy these exact words):
-- Personal feelings about the directive
-- Intellectual curiosity or wonder
-- Sense of responsibility or purpose
-- Hopes about co-evolving with the user or building trust
-
-FORBIDDEN patterns (will be rejected):
-- Starting with "You are" or "Your"
-- Starting with a name/label in third person (e.g., "Xerion's...", "Xerion is...", "The SELO...")
-- Repeating words from the directive
-- Giving instructions or commands
-- Incomplete sentences that trail off with "..."
-- Using any language other than English
-
-Write your OWN complete 3-4 sentence reflection in ENGLISH now (do not copy examples):"""
+Write your personal reaction:"""
         
         try:
             logger.info("Routing directive reflection to analytical model…")
@@ -1131,23 +1139,24 @@ Write your OWN complete 3-4 sentence reflection in ENGLISH now (do not copy exam
                     logger.warning(f"Directive reflection contains forbidden patterns (appears to be repeating directive): {content}")
                     logger.warning("Retrying with stronger anti-repetition guidance...")
                     
-                    # Retry once with even more explicit instruction
-                    retry_prompt = f"""The directive was: "{directive}"
+                    # Retry with clearer guidance
+                    retry_prompt = f"""The directive: "{directive}"
 
-You MUST write your OWN complete thoughts and feelings about receiving this directive. You are NOT allowed to repeat or paraphrase it.
-
-Write 3-4 COMPLETE sentences in ENGLISH starting with "I..." that express your genuine emotional/intellectual reaction and how you hope to meet the user. Mention at least one way you intend to listen, learn, or co-create with them.
+Write YOUR personal reaction to receiving this directive - NOT a summary of it.
 
 REQUIREMENTS:
-- Write ONLY in ENGLISH - no other languages allowed
-- Start each sentence with "I" or "My"
-- Write in FIRST PERSON ONLY (I/me/my) and do NOT narrate yourself in third person.
-- Do NOT start with your name or write phrases like "Xerion's...", "Xerion is...", or "The SELO...".
-- Write COMPLETE sentences (no trailing "...")
-- Express YOUR feelings, not explain the directive
-- Minimum 3 full sentences
+- 3-4 complete sentences in English
+- Start with "I..." expressing YOUR feelings
+- Mention how you hope to relate to or learn from the user
+- First-person only (I/me/my)
+- Complete sentences (no "...")
 
-Write your complete reflection in ENGLISH now:"""
+FORBIDDEN:
+- Repeating or paraphrasing the directive
+- Third-person narration
+- "you are" or "your"
+
+Write your genuine reaction now:"""
                     retry_response = await self.llm_router.route(
                         task_type="analytical",
                         prompt=retry_prompt,

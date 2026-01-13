@@ -115,6 +115,24 @@ class IdentityConstraints:
         r"(?:thoughtful|reliable|accurate) (?:and|,) (?:empathetic|transparent|helpful) support",
     ]
     
+    # TIERED PATTERN MATCHING for performance optimization
+    # Tier 1: Critical failures (most common violations) - check first, fast fail
+    CRITICAL_FAILURE_PATTERNS = [
+        r'\b(ai|artificial intelligence)\b',
+        r'\bchatbot\b',
+        r'\blanguage model\b',
+        r'\bassistant\b',
+        r'\bprogrammed to\b',
+        r'\bdesigned to\b',
+        r"i(?:'m| am) here to serve",
+    ]
+    
+    # Tier 2: Important violations - check if Tier 1 passes
+    IMPORTANT_VIOLATION_PATTERNS = META_REASONING_PATTERNS + SERVILE_PATTERNS
+    
+    # Tier 3: Edge cases - check only in strict mode
+    EDGE_CASE_PATTERNS = REFLECTION_META_PATTERNS
+    
     # Compiled regex for efficient checking with word boundaries
     # This prevents false positives like "available" containing "ai"
     _FORBIDDEN_PATTERN = re.compile(
@@ -122,21 +140,27 @@ class IdentityConstraints:
         re.IGNORECASE
     )
     
-    # Compiled pattern matchers for meta-reasoning and servile language
+    # Compiled pattern matchers for tiered validation
+    _CRITICAL_PATTERN = re.compile('|'.join(CRITICAL_FAILURE_PATTERNS), re.IGNORECASE)
     _META_PATTERN = re.compile('|'.join(META_REASONING_PATTERNS), re.IGNORECASE)
     _SERVILE_PATTERN = re.compile('|'.join(SERVILE_PATTERNS), re.IGNORECASE)
     _REFLECTION_META_PATTERN = re.compile('|'.join(REFLECTION_META_PATTERNS), re.IGNORECASE)
     
     @classmethod
     def check_compliance(cls, text: str, ignore_persona_name: bool = True, 
-                        persona_name: str = "") -> Tuple[bool, List[str]]:
+                        persona_name: str = "", strict_mode: bool = True) -> Tuple[bool, List[str]]:
         """
-        Check if text complies with identity constraints.
+        Check if text complies with identity constraints using tiered pattern matching.
+        
+        Tier 1 (Critical): Fast-fail on most common violations (ai, chatbot, assistant, etc.)
+        Tier 2 (Important): Check meta-reasoning and servile patterns if Tier 1 passes
+        Tier 3 (Edge Cases): Check reflection meta-patterns only in strict mode
         
         Args:
             text: Text to check for violations
             ignore_persona_name: If True, don't flag the persona's own name
             persona_name: The persona's established name (to whitelist)
+            strict_mode: If True, check all tiers including edge cases. If False, skip Tier 3
         
         Returns:
             Tuple of (is_compliant, list_of_violations)
@@ -148,6 +172,14 @@ class IdentityConstraints:
         
         violations = []
         seen_violations = set()  # Deduplicate
+        
+        # TIER 1: Critical failures - fast fail on most common violations
+        critical_match = cls._CRITICAL_PATTERN.search(text)
+        if critical_match:
+            term = critical_match.group(0)
+            violations.append(f"[CRITICAL: {term}]")
+            logger.warning(f"Critical identity violation detected: {term}")
+            return False, violations  # Fast fail - no need to check further
         
         # Use class-level balanced OK terms set for consistency
         
@@ -206,6 +238,9 @@ class IdentityConstraints:
                 violations.append(term)
                 seen_violations.add(term_lower)
         
+        # TIER 2: Important violations (meta-reasoning and servile patterns)
+        # Only check if no critical violations found (we already fast-failed if critical)
+        
         # Check for meta-reasoning patterns
         meta_matches = cls._META_PATTERN.finditer(text)
         for match in meta_matches:
@@ -221,6 +256,15 @@ class IdentityConstraints:
             if pattern_text.lower() not in seen_violations:
                 violations.append(f"[SERVILE: {pattern_text}]")
                 seen_violations.add(pattern_text.lower())
+        
+        # TIER 3: Edge case patterns (reflection meta-patterns) - only in strict mode
+        if strict_mode:
+            reflection_meta_matches = cls._REFLECTION_META_PATTERN.finditer(text)
+            for match in reflection_meta_matches:
+                pattern_text = match.group(0)
+                if pattern_text.lower() not in seen_violations:
+                    violations.append(f"[REFLECTION-META: {pattern_text}]")
+                    seen_violations.add(pattern_text.lower())
         
         is_compliant = len(violations) == 0
         
@@ -433,18 +477,20 @@ class IdentityConstraints:
         return True, "Valid name"
 
     @classmethod  
-    def is_valid_trait_name(cls, name: str) -> Tuple[bool, str]:
+    def is_valid_trait_name(cls, name: str, use_absolute_max: bool = False) -> Tuple[bool, str]:
         """
         Validate that a proposed trait name follows the required format.
         
         Trait names must be:
-        - 3-16 characters long
+        - 3-16 characters long (recommended)
+        - 3-18 characters long (absolute max with tolerance if use_absolute_max=True)
         - Lowercase letters only
         - Not a forbidden self-reference term
         - From allowed categories implicitly (checked elsewhere)
         
         Args:
             name: Proposed trait name
+            use_absolute_max: If True, allow up to 18 chars (with warning) instead of hard limit at 16
             
         Returns:
             Tuple of (is_valid, reason)
@@ -454,11 +500,23 @@ class IdentityConstraints:
         
         name_cleaned = name.strip()
         
-        # Check pattern: 3-16 lowercase letters only
+        # Check pattern with appropriate limit
         import re
-        trait_pattern = re.compile(r"^[a-z]{3,16}$")
+        if use_absolute_max:
+            trait_pattern = re.compile(r"^[a-z]{3,18}$")
+            max_chars = 18
+        else:
+            trait_pattern = re.compile(r"^[a-z]{3,16}$")
+            max_chars = 16
+        
         if not trait_pattern.match(name_cleaned):
-            return False, "Trait name must be 3-16 lowercase letters only (e.g., 'empathy', 'analytical', 'selfreflective')"
+            return False, f"Trait name must be 3-{max_chars} lowercase letters only (e.g., 'empathy', 'analytical', 'selfreflective')"
+        
+        # Log warning if using tolerance (17-18 chars)
+        if use_absolute_max and 16 < len(name_cleaned) <= 18:
+            import logging
+            logger = logging.getLogger("selo.constraints.identity")
+            logger.info(f"Trait name '{name_cleaned}' longer than recommended (16 chars) but within absolute max (18 chars)")
         
         # Check against forbidden terms
         if name_cleaned.lower() in cls.FORBIDDEN_SELF_REFERENCES:

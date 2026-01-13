@@ -40,6 +40,9 @@ class PromptBuilder:
         # Register built-in fallback templates
         self._register_fallback_templates()
         
+        # Cache for neutralized few-shot examples (Item 8: Performance optimization)
+        self._neutralized_example_cache: Dict[str, Any] = {}
+        
     def get_template(self, template_name: str) -> Optional[str]:
         """Return the raw template string by name, or None if missing.
         This is a light wrapper over the internal templates map for callers
@@ -644,6 +647,16 @@ class PromptBuilder:
 
             for example in examples:
                 try:
+                    # Check cache first using example ID
+                    example_id = example.get("id") or example.get("example_id")
+                    
+                    if example_id and example_id in self._neutralized_example_cache:
+                        # Use cached neutralized example
+                        formatted = self._neutralized_example_cache[example_id]
+                        formatted_examples.append(formatted)
+                        continue
+                    
+                    # Not in cache - neutralize and format
                     category = example.get("category", "positive")
                     scenario = example.get("scenario", "unknown")
                     user_message = _neutralize_example_value(example.get("user_message", ""))
@@ -668,6 +681,11 @@ Context: {context_desc}
 WHY THIS IS WRONG:
 {explanation}
 """
+                    
+                    # Cache the neutralized formatted example
+                    if example_id:
+                        self._neutralized_example_cache[example_id] = formatted
+                    
                     formatted_examples.append(formatted)
                 except Exception as e:
                     logger.error(f"Error formatting example: {e}", exc_info=True)
@@ -691,7 +709,7 @@ WHY THIS IS WRONG:
     
     def _inject_constraints(self, prompt: str, template_name: str, persona_name: str) -> str:
         """
-        Inject system constraints into the prompt based on template type.
+        Inject system constraints using UnifiedConstraintSystem.
         
         Args:
             prompt: The base prompt after template substitution
@@ -702,55 +720,38 @@ WHY THIS IS WRONG:
             Prompt with constraints injected appropriately
         """
         try:
-            from backend.constraints import (
-                CoreConstraints, 
-                EthicalGuardrails, 
-                BehavioralGuidelines,
-                IdentityConstraints
-            )
+            from backend.constraints import get_unified_constraint_system
             
-            # Determine if this is an internal (reflection/bootstrap) or external (conversational) prompt
-            is_internal = any(keyword in template_name.lower() for keyword in 
-                            ['reflection', 'reassessment', 'bootstrap', 'persona'])
+            unified_system = get_unified_constraint_system()
             
-            if is_internal:
-                # Internal prompts: Comprehensive constraints for quality and compliance
-                constraints_section = f"""
-{'='*80}
-SYSTEM CONSTRAINTS - ENFORCE STRICTLY
-{'='*80}
-
-{IdentityConstraints.get_all_identity_constraints(persona_name)}
-
-{CoreConstraints.GROUNDING_CONSTRAINT}
-
-{CoreConstraints.NO_FABRICATION}
-
-{EthicalGuardrails.TRUTHFULNESS}
-
-{BehavioralGuidelines.AUTONOMOUS_BEHAVIOR}
-
-🚨 AUTHENTIC REFLECTION ONLY:
-Write genuine first-person thoughts about conversation content. No strategic planning about identity, word choice, or self-presentation.
-
-{'='*80}
-"""
-                # For internal prompts, inject at the start for maximum visibility
+            # Determine context type from template name
+            template_lower = template_name.lower()
+            
+            if 'bootstrap' in template_lower or 'persona' in template_lower:
+                # Bootstrap: Comprehensive constraints
+                constraints_section = unified_system.for_bootstrap(
+                    persona_name=persona_name,
+                    token_budget=None  # No budget limit for critical bootstrap
+                )
+                # Inject at start for maximum visibility
+                return constraints_section + "\n\n" + prompt
+                
+            elif 'reflection' in template_lower or 'reassessment' in template_lower:
+                # Reflection: Balanced constraints
+                constraints_section = unified_system.for_reflection(
+                    persona_name=persona_name,
+                    token_budget=None  # Allow full reflection constraints
+                )
+                # Inject at start for internal prompts
                 return constraints_section + "\n\n" + prompt
                 
             else:
-                # External/conversational prompts: Compact version to save tokens
-                constraints_section = f"""
----
-CORE GUIDELINES:
-{IdentityConstraints.get_persona_name_constraint(persona_name)}
-
-{CoreConstraints.GROUNDING_CONSTRAINT}
-
-{EthicalGuardrails.TRUTHFULNESS}
----
-"""
-                # For conversational prompts, inject at the end (after persona details)
+                # Conversation: Compact constraints
+                constraints_section = unified_system.for_conversation(
+                    persona_name=persona_name,
+                    token_budget=200  # Compact budget for frequent use
+                )
+                # Inject at end for conversational prompts
                 return prompt + "\n\n" + constraints_section
                 
         except Exception as e:

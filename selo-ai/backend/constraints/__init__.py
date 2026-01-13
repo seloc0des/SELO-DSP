@@ -11,6 +11,14 @@ from .composition import (
     ConstraintComposer,
     get_constraint_composer
 )
+from .unified_system import (
+    UnifiedConstraintSystem,
+    get_unified_constraint_system
+)
+from .version_tracker import (
+    ConstraintVersionTracker,
+    get_constraint_version_tracker
+)
 from .telemetry import (
     ConstraintTelemetry,
     get_constraint_telemetry,
@@ -44,6 +52,10 @@ __all__ = [
     'ConstraintPriority',
     'ConstraintComposer',
     'get_constraint_composer',
+    'UnifiedConstraintSystem',
+    'get_unified_constraint_system',
+    'ConstraintVersionTracker',
+    'get_constraint_version_tracker',
     'ConstraintTelemetry',
     'get_constraint_telemetry',
     'record_violation',
