@@ -946,6 +946,10 @@ async def initialize_services():
         except AttributeError as e:
             logging.debug(f"Unable to assign reflection namespace to processor: {e}", exc_info=True)
         app.state.reflection_namespace = reflection_namespace
+        try:
+            app.state.services["reflection_namespace"] = reflection_namespace
+        except Exception as _reg_err:
+            logging.debug(f"Unable to register reflection namespace in services map: {_reg_err}", exc_info=True)
 
         # Register chat namespace for streaming chat responses
         try:
@@ -3020,6 +3024,7 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                             "user_profile_id": installation_user_id,
                             "turn_id": turn_id,
                             "timestamp": utc_iso(),
+                            "socket_room_id": session_id,
                         }
                         await reflection_ns.emit_reflection_event(
                             event_name="reflection_generating",

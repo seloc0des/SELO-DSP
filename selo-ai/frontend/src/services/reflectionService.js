@@ -259,8 +259,14 @@ export const initReflectionSocket = (userId, onReflectionUpdate, onConnectionSta
         scheduleReinit('socket_error');
       });
       
-      socket.on('reflection_generating', handleGenerating);
-      socket.on('reflection_generated', handleGenerated);
+      socket.on('reflection_generating', (data) => {
+        logger.info('reflection_generating event', data);
+        handleGenerating(data);
+      });
+      socket.on('reflection_generated', (data) => {
+        logger.info('reflection_generated event', data);
+        handleGenerated(data);
+      });
     })
     .catch((e) => {
       logger.error('Failed to initialize socket due to config error:', e);
