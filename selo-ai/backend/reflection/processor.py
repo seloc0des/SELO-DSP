@@ -4172,6 +4172,8 @@ Please regenerate your reflection following these identity constraints strictly.
                         "user_id": canonical_user_id,
                         # User's actual name for placeholder replacement
                         "user_name": context.get("user_name") if isinstance(context, dict) else None,
+                        # Socket room ID for frontend targeting
+                        "socket_room_id": context.get("socket_room_id") if isinstance(context, dict) else None,
                     },
                 }
 
@@ -4694,6 +4696,7 @@ Please regenerate your reflection following these identity constraints strictly.
                     else None,
                     'trait_changes': _ensure_list(result_blob.get('trait_changes')),
                     'metadata': metadata_blob or {},
+                    'socket_room_id': metadata_blob.get('socket_room_id') if metadata_blob else None,
                 }
                 
                 # Extract user name from metadata if available
