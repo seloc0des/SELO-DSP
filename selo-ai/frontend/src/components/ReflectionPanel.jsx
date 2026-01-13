@@ -145,7 +145,9 @@ const ReflectionPanel = ({ sessionId, messages }) => {
         }
         const payload = base?.data || base;
         if (!payload) return;
-        if (!payload.user_profile_id || payload.user_profile_id === sessionId) {
+        const socketRoomId = payload.socket_room_id || payload.socketRoomId;
+        const matchesSession = socketRoomId === sessionId || payload.user_profile_id === sessionId;
+        if (!payload.user_profile_id || matchesSession) {
           if (base.status === 'complete') {
             setReflectingCount(c => Math.max(0, c - 1));
             // Add user-facing reflections, skip scheduled tasks and internal seeds
