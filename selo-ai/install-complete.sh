@@ -9,6 +9,16 @@ prepare_install_dir() {
     echo "Syncing codebase to $target ..."
     sudo rsync -a --delete --exclude '.git' --exclude 'backend/venv' "$SCRIPT_DIR/" "$target/"
     
+    # Ensure Reports directory is available at canonical path for boot directives
+    if [ -d "$SCRIPT_DIR/../Reports" ]; then
+        echo "Copying Reports directory for boot directives to /opt/selo-ai/Reports..."
+        sudo mkdir -p /opt/selo-ai/Reports
+        sudo cp -r "$SCRIPT_DIR/../Reports/"* /opt/selo-ai/Reports/ 2>/dev/null || true
+        sudo chown -R "$INST_USER":"$INST_USER" /opt/selo-ai/Reports 2>/dev/null || true
+        sudo find /opt/selo-ai/Reports -type d -exec chmod 775 {} \; 2>/dev/null || true
+        sudo find /opt/selo-ai/Reports -type f -exec chmod 664 {} \; 2>/dev/null || true
+    fi
+
     # Ensure Reports directory is copied and accessible
     if [ -d "$SCRIPT_DIR/../Reports" ]; then
         echo "Copying Reports directory for boot directives..."
@@ -30,6 +40,15 @@ prepare_install_dir() {
     # Default to running in-place from the current repository location
     target="$SCRIPT_DIR"
     echo "No --install-dir provided; installing in-place from $target"
+    # Ensure Reports directory is available for boot directives (used via SELO_REPORTS_DIR)
+    if [ -d "$SCRIPT_DIR/../Reports" ]; then
+      echo "Copying Reports directory for boot directives to /opt/selo-ai/Reports..."
+      sudo mkdir -p /opt/selo-ai/Reports
+      sudo cp -r "$SCRIPT_DIR/../Reports/"* /opt/selo-ai/Reports/ 2>/dev/null || true
+      sudo chown -R "$INST_USER":"$INST_USER" /opt/selo-ai/Reports 2>/dev/null || true
+      sudo find /opt/selo-ai/Reports -type d -exec chmod 775 {} \; 2>/dev/null || true
+      sudo find /opt/selo-ai/Reports -type f -exec chmod 664 {} \; 2>/dev/null || true
+    fi
     # Ensure the install tree is owned by the instance user so the service can write logs/locks
     echo "Setting ownership to $INST_USER:$INST_USER..."
     sudo chown -R "$INST_USER":"$INST_USER" "$target" 2>/dev/null || true
@@ -1156,9 +1175,9 @@ finalize_service_env() {
     fi
     # Set Reports directory path for boot directives
     if grep -q '^SELO_REPORTS_DIR=' "$SCRIPT_DIR/backend/.env"; then
-      sed -i -E "s|^SELO_REPORTS_DIR=.*|SELO_REPORTS_DIR=${SCRIPT_DIR}/../Reports|" "$SCRIPT_DIR/backend/.env" || true
+      sed -i -E "s|^SELO_REPORTS_DIR=.*|SELO_REPORTS_DIR=/opt/selo-ai/Reports|" "$SCRIPT_DIR/backend/.env" || true
     else
-      echo "SELO_REPORTS_DIR=${SCRIPT_DIR}/../Reports" >> "$SCRIPT_DIR/backend/.env"
+      echo "SELO_REPORTS_DIR=/opt/selo-ai/Reports" >> "$SCRIPT_DIR/backend/.env"
     fi
     # Chat context window budget based on hardware tier
     if grep -q '^CHAT_NUM_CTX=' "$SCRIPT_DIR/backend/.env"; then
