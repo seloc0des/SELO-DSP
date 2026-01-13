@@ -3701,6 +3701,18 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                 )
                 if addition:
                     clean_response += addition
+            
+            # Emit complete response via Socket.IO (non-streaming path)
+            if chat_namespace and clean_response:
+                try:
+                    await chat_namespace.emit_chat_complete(
+                        user_id=session_id,
+                        turn_id=turn_id,
+                        content=clean_response,
+                        timestamp=response_timestamp or utc_iso(),
+                    )
+                except Exception as emit_err:
+                    logging.warning(f"Non-streaming chat emission failed: {emit_err}")
 
         if response_timestamp is None:
             response_timestamp = utc_iso()
