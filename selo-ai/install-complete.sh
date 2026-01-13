@@ -2362,7 +2362,8 @@ bootstrap_persona_pre_service() {
           cd "$SCRIPT_DIR" && \
           PYTHONPATH="$SCRIPT_DIR/backend:$SCRIPT_DIR:${PYTHONPATH:-}" \
           timeout 1800 python3 -u -m backend.scripts.bootstrap_persona --verbose > "$log_file" 2>&1
-        ) || rc=$?
+        )
+        rc=$?
         
         if [ $rc -eq 0 ]; then
             break
