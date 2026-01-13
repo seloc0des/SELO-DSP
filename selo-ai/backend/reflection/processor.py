@@ -4304,6 +4304,55 @@ Please regenerate your reflection following these identity constraints strictly.
                 for violation in constraint_violations:
                     violations.append(f"Identity violation: {violation.get('term', 'unknown')}")
                     constraint_score -= 0.3
+
+            # Enforce reflection POV: must be first-person inner monologue.
+            # We allow third-person references to the USER (by name), but the persona must not narrate itself in third person.
+            # Example violation seen: "Xerion's first contact..." which is third-person self narration.
+            content_trimmed = (reflection_content or "").strip()
+            content_lower = content_trimmed.lower()
+            first_person_markers = [
+                " i ",
+                " i'm ",
+                " im ",
+                " i've ",
+                " ive ",
+                " i'd ",
+                " id ",
+                " i'll ",
+                " ill ",
+                " me ",
+                " my ",
+                " myself ",
+            ]
+
+            # Detect absence of first-person voice (likely third-person narration).
+            # Pad with spaces to make simple substring checks robust at boundaries.
+            padded = f" {content_lower} "
+            has_first_person = any(marker in padded for marker in first_person_markers)
+            if content_trimmed and not has_first_person:
+                violations.append("Perspective violation: reflection must be written in first person (I/me/my)")
+                constraint_score -= 0.5
+
+            # Strong signal of third-person self-narration: starts with persona_name's / persona_name is ...
+            # Only applies when we know persona_name.
+            if persona_name and isinstance(persona_name, str):
+                persona = persona_name.strip()
+            else:
+                persona = ""
+            if persona:
+                persona_lower = persona.lower()
+                # Beginning-of-text patterns are high precision for self-narration.
+                third_person_self_patterns = [
+                    rf"^\s*{re.escape(persona_lower)}\s*['’]s\b",
+                    rf"^\s*{re.escape(persona_lower)}\s+is\b",
+                    rf"^\s*{re.escape(persona_lower)}\s+was\b",
+                    rf"^\s*{re.escape(persona_lower)}\s+feels\b",
+                ]
+                for pattern in third_person_self_patterns:
+                    if re.search(pattern, content_lower, re.IGNORECASE):
+                        violations.append("Perspective violation: do not narrate yourself in third person; write as 'I'")
+                        constraint_score -= 0.6
+                        break
             
             # CRITICAL: Check for meta-reasoning about identity (should never appear in reflections)
             # Reflections should BE authentic, not think about being authentic

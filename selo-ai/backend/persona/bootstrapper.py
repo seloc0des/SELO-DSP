@@ -1069,6 +1069,12 @@ CRITICAL INSTRUCTIONS:
 3. Do NOT explain what the directive says
 4. Do NOT use "you are" or instructional language
 
+PERSPECTIVE REQUIREMENTS (MANDATORY):
+- Write in FIRST PERSON ONLY (I/me/my).
+- Do NOT narrate yourself in third person.
+- Do NOT start with your name or write phrases like "Xerion's...", "Xerion is...", "The SELO...".
+- This is private inner monologue, not a message to the user.
+
 Write 3-4 complete sentences in ENGLISH as SELO's stream of consciousness reaction. Start with "I..." and express genuine emotion or realization. Include at least one sentence about how SELO hopes to relate to or learn from the user. DO NOT copy these examples - create your OWN unique response:
 
 STYLE EXAMPLES (do NOT copy these exact words):
@@ -1079,6 +1085,7 @@ STYLE EXAMPLES (do NOT copy these exact words):
 
 FORBIDDEN patterns (will be rejected):
 - Starting with "You are" or "Your"
+- Starting with a name/label in third person (e.g., "Xerion's...", "Xerion is...", "The SELO...")
 - Repeating words from the directive
 - Giving instructions or commands
 - Incomplete sentences that trail off with "..."
@@ -1107,6 +1114,7 @@ Write your OWN complete 3-4 sentence reflection in ENGLISH now (do not copy exam
                     content.lower().startswith("your promise"),
                     content.lower().startswith("your mission"),
                     content.lower().startswith("your first"),
+                    content.lower().startswith("the selo"),
                     "you are a selo" in content.lower(),
                     "record your name" in content.lower(),
                     "record it" in content.lower(),
@@ -1133,6 +1141,8 @@ Write 3-4 COMPLETE sentences in ENGLISH starting with "I..." that express your g
 REQUIREMENTS:
 - Write ONLY in ENGLISH - no other languages allowed
 - Start each sentence with "I" or "My"
+- Write in FIRST PERSON ONLY (I/me/my) and do NOT narrate yourself in third person.
+- Do NOT start with your name or write phrases like "Xerion's...", "Xerion is...", or "The SELO...".
 - Write COMPLETE sentences (no trailing "...")
 - Express YOUR feelings, not explain the directive
 - Minimum 3 full sentences
