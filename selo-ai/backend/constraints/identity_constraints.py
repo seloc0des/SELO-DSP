@@ -174,12 +174,35 @@ class IdentityConstraints:
         seen_violations = set()  # Deduplicate
         
         # TIER 1: Critical failures - fast fail on most common violations
+        # Check context before failing to avoid false positives on instructional text
         critical_match = cls._CRITICAL_PATTERN.search(text)
         if critical_match:
             term = critical_match.group(0)
-            violations.append(f"[CRITICAL: {term}]")
-            logger.warning(f"Critical identity violation detected: {term}")
-            return False, violations  # Fast fail - no need to check further
+            
+            # Validate context before fast-failing
+            context_start = max(0, critical_match.start() - 100)
+            context_end = min(len(text), critical_match.end() + 20)
+            context_before = text[context_start:critical_match.start()].lower()
+            
+            # Skip if term appears in instructional/negative/listing context
+            negative_indicators = [
+                "don't use", "avoid", "never use", "not an", "not a", "refuse", "instead of",
+                "such as", "like", "including", "labels:", "terms:", ":", "e.g.", 
+                "forbidden", "prohibited", "not", "nor", "don't", "never"
+            ]
+            
+            # Check if in instructional context
+            is_instructional = any(indicator in context_before for indicator in negative_indicators)
+            
+            # Check if this appears to be in a list (preceded by comma or dash within 5 chars)
+            immediate_context = text[max(0, critical_match.start() - 5):critical_match.start()]
+            in_list = any(sep in immediate_context for sep in [", ", "- ", "/"])
+            
+            # Only fast-fail if NOT in instructional/list context
+            if not is_instructional and not in_list:
+                violations.append(f"[CRITICAL: {term}]")
+                logger.warning(f"Critical identity violation detected: {term}")
+                return False, violations  # Fast fail - true violation confirmed
         
         # Use class-level balanced OK terms set for consistency
         
