@@ -288,6 +288,7 @@ class VectorStore:
                                 if floats:
                                     return floats
                             except Exception:
+                                logger.error("Silent exception caught", exc_info=True)
                                 pass
                     # As a last attempt, if routed is a list of numbers
                     if isinstance(routed, list) and all(isinstance(x, (int, float)) for x in routed):
@@ -366,6 +367,7 @@ class VectorStore:
                     try:
                         self._persist_embedding_dim(vec_dim)
                     except Exception:
+                        logger.error("Silent exception caught", exc_info=True)
                         pass
                 elif vec_dim != self.embedding_dim:
                     # Dimension mismatch: if index is empty, recreate with new dim; else rebuild
@@ -385,6 +387,7 @@ class VectorStore:
                     try:
                         self._persist_embedding_dim(vec_dim)
                     except Exception:
+                        logger.error("Silent exception caught", exc_info=True)
                         pass
             
             # Store the embedding
@@ -456,6 +459,7 @@ class VectorStore:
         try:
             os.environ["EMBEDDING_DIM"] = str(dim)
         except Exception:
+            logger.error("Silent exception caught", exc_info=True)
             pass
         try:
             # backend/.env is two levels up from this file's directory
@@ -477,9 +481,10 @@ class VectorStore:
                 with open(env_path, "w", encoding="utf-8") as f:
                     f.writelines(lines)
         except Exception:
-            # Non-fatal if we cannot persist
-            pass
             
+            logger.error("Silent exception caught", exc_info=True)
+
+            # pass
     async def search_by_embedding(self, 
                            embedding: List[float], 
                            top_k: int = 5,

@@ -67,9 +67,13 @@ class ReflectionNamespace:
                 # Store user ID with connection
                 if sid in self.connected_clients:
                     self.connected_clients[sid]['user_id'] = user_id
+                
+                # Join a room named after user_id for consistent room-based targeting
+                # This aligns with how the chat namespace handles room targeting
+                await sio.enter_room(sid, user_id, namespace='/reflection')
                     
                 await sio.emit('authenticated', {'status': 'success'}, room=sid, namespace='/reflection')
-                logger.info(f"Client {sid} authenticated as user {user_id}")
+                logger.info(f"Client {sid} authenticated as user {user_id} and joined room")
                 
             except Exception as e:
                 logger.error(f"Authentication error: {str(e)}", exc_info=True)
@@ -187,7 +191,7 @@ class ReflectionNamespace:
         Args:
             event_name: Name of the event to emit
             data: Event data
-            user_id: Optional user ID to target specific user, or None for broadcast
+            user_id: Optional user ID to target specific user's room, or None for broadcast
         """
         if not self.sio_server:
             logger.warning("Socket.IO server not available, cannot emit reflection event")
@@ -195,18 +199,10 @@ class ReflectionNamespace:
             
         try:
             if user_id:
-                # Target specific user - find their session ID(s)
-                target_sids = [
-                    sid for sid, client_info in self.connected_clients.items() 
-                    if client_info.get('user_id') == user_id
-                ]
-                
-                if target_sids:
-                    for sid in target_sids:
-                        await self.sio_server.emit(event_name, data, room=sid, namespace='/reflection')
-                    logger.debug(f"Emitted {event_name} to {len(target_sids)} sessions for user {user_id}")
-                else:
-                    logger.debug(f"No active sessions found for user {user_id}")
+                # Target specific user's room - clients join rooms on authenticate
+                # This aligns with how the chat namespace handles room-based targeting
+                await self.sio_server.emit(event_name, data, room=user_id, namespace='/reflection')
+                logger.debug(f"Emitted {event_name} to room {user_id}")
             else:
                 # Broadcast to all connected clients in reflection namespace
                 await self.sio_server.emit(event_name, data, namespace='/reflection')

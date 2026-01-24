@@ -425,6 +425,7 @@ class AutobiographicalEpisodeService:
                 try:
                     detail += f" (priority {float(priority):.2f})"
                 except (TypeError, ValueError):
+                    logger.debug("Expected exception caught", exc_info=True)
                     pass
             lines.append(detail)
         if len(steps) > 5:

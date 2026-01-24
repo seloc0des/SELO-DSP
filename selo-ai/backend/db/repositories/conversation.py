@@ -106,7 +106,15 @@ class ConversationRepository:
                                reflection_triggered: bool, session: AsyncSession) -> ConversationMessage:
         """Implementation of add_message."""
         try:
-            # Get current message count for this conversation
+            # Lock the conversation row to prevent race conditions when computing message_index.
+            # This ensures concurrent add_message calls serialize on the same conversation.
+            from sqlalchemy import text
+            await session.execute(
+                text("SELECT id FROM conversations WHERE id = :conv_id FOR UPDATE"),
+                {"conv_id": str(conversation_id)}
+            )
+            
+            # Get current message count for this conversation (now safe under lock)
             result = await session.execute(
                 select(func.count(ConversationMessage.id))
                 .where(ConversationMessage.conversation_id == conversation_id)
@@ -298,8 +306,8 @@ class ConversationRepository:
             result = await session.execute(query)
             memories = result.scalars().all()
             
-            # Update access timestamps
-            memory_ids = [str(memory.id) for memory in memories]
+            # Update access timestamps - keep UUIDs as-is (don't convert to string)
+            memory_ids = [memory.id for memory in memories]
             if memory_ids:
                 await session.execute(
                     update(Memory)
@@ -309,7 +317,7 @@ class ConversationRepository:
                         access_count=Memory.access_count + 1
                     )
                 )
-                await session.commit()
+                # Note: get_session context manager handles commit automatically
             
             return list(memories)
             

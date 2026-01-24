@@ -203,6 +203,7 @@ def _format_system_snapshot(system_status: Optional[Dict[str, Any]], gpu_status:
             else:
                 parts.append(f"RAM {mu:.1f}/{mt:.1f}GB")
     except (KeyError, AttributeError, TypeError, ValueError):
+        logger.debug("Expected exception caught", exc_info=True)
         pass
 
     disk = (system_status or {}).get("disk") or {}
@@ -216,7 +217,7 @@ def _format_system_snapshot(system_status: Optional[Dict[str, Any]], gpu_status:
             else:
                 parts.append(f"Disk {du:.1f}/{dt:.1f}GB")
     except (KeyError, AttributeError, TypeError, ValueError):
-        pass
+        logger.debug("Disk metrics parsing failed", exc_info=True)
 
     try:
         load_avg = (system_status or {}).get("load_avg") or []
@@ -224,7 +225,7 @@ def _format_system_snapshot(system_status: Optional[Dict[str, Any]], gpu_status:
             la = ", ".join(f"{float(x):.2f}" for x in load_avg[:3])
             parts.append(f"Load avg {la}")
     except (KeyError, AttributeError, TypeError, ValueError):
-        pass
+        logger.debug("Load average parsing failed", exc_info=True)
 
     try:
         if gpu_status and gpu_status.get("available"):
@@ -248,7 +249,7 @@ def _format_system_snapshot(system_status: Optional[Dict[str, Any]], gpu_status:
             joined = ", ".join(gpu_parts) if gpu_parts else "available"
             parts.append(f"{name}: {joined}")
     except (KeyError, AttributeError, TypeError, ValueError):
-        pass
+        logger.debug("GPU metrics parsing failed", exc_info=True)
 
     summary = ", ".join(p for p in parts if p)
     if not summary:
@@ -1514,9 +1515,10 @@ async def lifespan(app: FastAPI):
             try:
                 app.state.services["keepalive_task"] = keepalive_task
             except Exception:
-                # Task registration is optional - task still runs even if not registered
-                pass
-            # Start session wrap-up loop (idle-based reflection/memory consolidation)
+                
+                logger.error("Silent exception caught", exc_info=True)
+
+                # pass
             try:
                 from .scheduler.session_wrapup import session_wrapup_loop
                 wrap_task = asyncio.create_task(session_wrapup_loop(app))
@@ -1525,8 +1527,10 @@ async def lifespan(app: FastAPI):
             try:
                 app.state.services["wrapup_task"] = wrap_task
             except Exception:
-                # Task registration is optional - task still runs even if not registered
-                pass
+                
+                logger.error("Silent exception caught", exc_info=True)
+
+                # pass
         except Exception as _ka_err:
             logging.warning(f"Failed to start keepalive loop: {_ka_err}")
     except Exception as e:
@@ -1570,10 +1574,10 @@ async def lifespan(app: FastAPI):
                     # Task was cancelled - this is expected during shutdown
                     pass
         except Exception:
-            # Failed to cancel/cleanup boot seed task - continue shutdown anyway
-            pass
-        
-        # Cancel catchup task
+            
+            logger.error("Silent exception caught", exc_info=True)
+
+            # pass
         try:
             catchup_task = app.state.services.get("catchup_task")
             if catchup_task:
@@ -1584,10 +1588,10 @@ async def lifespan(app: FastAPI):
                     # Task was cancelled - this is expected during shutdown
                     pass
         except Exception:
-            # Failed to cancel/cleanup catchup task - continue shutdown anyway
-            pass
-        
-        # Cancel prewarm task
+            
+            logger.error("Silent exception caught", exc_info=True)
+
+            # pass
         try:
             prewarm_task = app.state.services.get("prewarm_task")
             if prewarm_task:
@@ -1598,29 +1602,30 @@ async def lifespan(app: FastAPI):
                     # Task was cancelled - this is expected during shutdown
                     pass
         except Exception:
-            # Failed to cancel/cleanup prewarm task - continue shutdown anyway
-            pass
-        
-        # Cancel keepalive loop if running
+            
+            logger.error("Silent exception caught", exc_info=True)
+
+            # pass
         try:
             keepalive_task = app.state.services.get("keepalive_task")
             if keepalive_task:
                 keepalive_task.cancel()
                 await keepalive_task
         except Exception:
-            # Failed to cancel keepalive task - continue shutdown anyway
-            pass
-        # Cancel wrap-up task
+            
+            logger.error("Silent exception caught", exc_info=True)
+
+            # pass
         try:
             wrap_task = app.state.services.get("wrapup_task")
             if wrap_task:
                 wrap_task.cancel()
                 await wrap_task
         except Exception:
-            # Failed to cancel wrap-up task - continue shutdown anyway
-            pass
-        
-        # Cancel health monitor task
+            
+            logger.error("Silent exception caught", exc_info=True)
+
+            # pass
         try:
             health_monitor_task = app.state.services.get("health_monitor_task")
             if health_monitor_task:
@@ -1861,10 +1866,10 @@ async def diagnostics_gpu(
         import faiss
         faiss_gpu_available = hasattr(faiss, 'StandardGpuResources')
     except ImportError:
-        # Faiss not installed or GPU version not available - GPU features disabled
-        pass
+        
+        logger.warning("Exception caught and ignored", exc_info=True)
 
-    # Controller timeout from centralized config
+        # pass
     from .config.app_config import get_app_config
     app_config = get_app_config()
     controller_timeout = app_config.llm_timeout
@@ -1917,18 +1922,19 @@ async def diagnostics_gpu(
                 models = data.get("models", [])
                 result["ollama"]["models_available"] = [model.get("name", "") for model in models]
     except Exception:
-        # Ollama API unavailable - omit models list from diagnostics
-        pass
+        
+        logger.error("Silent exception caught", exc_info=True)
 
-    # Get vector store GPU statistics if available
+        # pass
     try:
         vector_store = app.state.services.get("vector_store")
         if vector_store and hasattr(vector_store, 'get_stats'):
             result["vector_store_gpu"] = vector_store.get_stats()
     except Exception:
-        # Vector store not available or no GPU stats - omit from diagnostics
-        pass
+        
+        logger.error("Silent exception caught", exc_info=True)
 
+        # pass
     if test_llm:
         try:
             t0 = time.time()
@@ -2206,9 +2212,10 @@ async def _get_fallback_system_prompt(services: Dict[str, Any], session_id: Opti
                     if persona and hasattr(persona, "name") and persona.name and persona.name.strip():
                         persona_name = persona.name.strip()
         except Exception:
-            # Persona name lookup failed - use empty string (constraints still apply)
-            pass
-    
+            
+            logger.error("Silent exception caught", exc_info=True)
+
+            # pass
     return f"""
 {CoreConstraints.get_all_critical_constraints()}
 
@@ -2321,10 +2328,10 @@ async def _derive_adaptive_chat_params(services: Dict[str, Any]) -> Dict[str, An
             temperature -= (formality - 0.5) * 0.2    # more formal => a bit cooler
 
     except Exception:
-        # Adaptive budget calculation failed - fall back to baseline token limits
-        pass
+        
+        logger.error("Silent exception caught", exc_info=True)
 
-    # Clamp final values
+        # pass
     max_tokens = max(MIN_TOKENS, int(max_tokens))
     try:
         temperature = float(temperature)
@@ -2369,9 +2376,10 @@ def _validate_reflection_content(reflection_text: str, reflection_payload: Dict[
             meta.get("timeout"), meta.get("error"), meta.get("fallback"), meta.get("reason")
         )
     except Exception:
-        # Metadata logging failed - continue with reflection anyway
-        pass
-    
+        
+        logger.error("Silent exception caught", exc_info=True)
+
+        # pass
     if not reflection_text:
         raise HTTPException(status_code=503, detail=f"Reflection {phase} failed; please retry.")
     
@@ -2460,13 +2468,15 @@ async def _adopt_boot_reflection_if_needed(
                             enriched_data["traits"] = [t.to_dict() for t in traits]
                             enriched_data["persona_id"] = getattr(persona, "id", None)
                         except Exception:
-                            # Trait enrichment failed - continue without traits
-                            pass
+                            
+                            logger.error("Silent exception caught", exc_info=True)
+
+                            # pass
                 except Exception:
-                    # Persona lookup failed - continue without persona data
-                    pass
-                
-                # Emit to frontend
+                    
+                    logger.error("Silent exception caught", exc_info=True)
+
+                    # pass
                 await reflection_ns.emit_reflection_event(
                     event_name="reflection_generated",
                     data={
@@ -2553,6 +2563,7 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                         system_snapshot_text,
                     )
                 except Exception:
+                    logger.error("Silent exception caught", exc_info=True)
                     pass
     except Exception as metrics_err:
         logger.debug(f"System diagnostics collection failed (non-critical): {metrics_err}")
@@ -2636,8 +2647,9 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                     try:
                         await event_repo.mark_event_followed_up(str(evt_id), outcome=outcome_text)
                     except Exception as _mark_err:
-                        pass
+                        logger.debug("Named exception caught", exc_info=True)
 
+                        # pass
                     tone = "mixed"
                     positive = ("great", "good", "well", "awesome", "amazing", "passed", "got the job", "accepted")
                     negative = ("bad", "terrible", "awful", "failed", "rejected", "didn't get", "didnt get")
@@ -2657,6 +2669,7 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                             emotional_tone=tone,
                         )
                     except Exception:
+                        logger.error("Silent exception caught", exc_info=True)
                         pass
 
             # 2) Inside joke / shared language capture (reuse relationship_state.inside_jokes)
@@ -2698,11 +2711,12 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                                 emotional_tone="positive",
                             )
                         except Exception:
+                            logger.error("Silent exception caught", exc_info=True)
                             pass
                 except Exception as _joke_err:
-                    pass
+                    logger.debug("Named exception caught", exc_info=True)
 
-            # 3) Improved anticipated event parsing + de-duplication
+                    # pass
             event_keywords = [
                 "interview", "presentation", "meeting", "appointment", "exam", "deadline",
                 "trip", "flight", "surgery", "party", "date",
@@ -3048,6 +3062,7 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                     try:
                         reflection_additional_context["reflection_classifier"] = should_reflect_decision
                     except Exception:
+                        logger.error("Silent exception caught", exc_info=True)
                         pass
                     # Include system metrics when diagnostics are active
                     if diagnostic_mode != DiagnosticMode.NONE and system_snapshot_text:
@@ -3106,6 +3121,7 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                     try:
                         logging.error("Reflection pre-processing exception (category=%s): %r", category, e, exc_info=True)
                     except Exception:
+                        logger.error("Silent exception caught", exc_info=True)
                         pass
 
                     # ALL reflection failures are critical - never proceed without reflection
@@ -3115,6 +3131,7 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                             category,
                         )
                     except Exception:
+                        logger.error("Silent exception caught", exc_info=True)
                         pass
                     if isinstance(e, HTTPException):
                         raise
@@ -3175,6 +3192,7 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                     try:
                         logging.error("Reflection sync exception (category=%s): %r", category, e, exc_info=True)
                     except Exception:
+                        logger.error("Silent exception caught", exc_info=True)
                         pass
 
                     # ALL reflection failures are critical - never proceed without reflection
@@ -3184,6 +3202,7 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                             category,
                         )
                     except Exception:
+                        logger.error("Silent exception caught", exc_info=True)
                         pass
                     if isinstance(e, HTTPException):
                         raise
@@ -3251,6 +3270,7 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                             except Exception as _emit_copy_err:
                                 logging.debug(f"Boot seed copy/emit skipped: {_emit_copy_err}")
             except Exception:
+                logger.error("Silent exception caught", exc_info=True)
                 pass
     except Exception as _baseline_err:
         logging.debug(f"Boot reflection adoption not applied: {_baseline_err}")
@@ -3320,6 +3340,7 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                     degraded_mode,
                 )
             except Exception:
+                logger.error("Silent exception caught", exc_info=True)
                 pass
             raise HTTPException(status_code=503, detail="Reflection required but not available; please retry.")
     
@@ -3729,12 +3750,14 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                 False,  # Don't suppress intro - LLM decides
             )
         except Exception:
+            logger.error("Silent exception caught", exc_info=True)
             pass
         try:
             resolved_user_name = user_name_from_message or user_name_from_memory
             if resolved_user_name and isinstance(clean_response, str) and clean_response:
                 clean_response = clean_response.replace("[User]", resolved_user_name).replace("[user]", resolved_user_name)
         except Exception:
+            logger.error("Silent exception caught", exc_info=True)
             pass
         # Option B: No intro injection - LLM handles all greetings naturally
         
@@ -3852,6 +3875,7 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                 **(reflection_payload if isinstance(reflection_payload, dict) else {}),
             }
         except Exception:
+            logger.error("Silent exception caught", exc_info=True)
             pass
         if relationship_question_payload:
             result_payload.setdefault("metadata", {})["relationship_question"] = relationship_question_payload

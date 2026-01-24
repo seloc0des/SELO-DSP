@@ -226,6 +226,7 @@ class PredictiveCognitionEngine:
                     time_diff = last - first
                     patterns["time_span_hours"] = round(time_diff.total_seconds() / 3600, 2)
                 except Exception:
+                    logger.error("Silent exception caught", exc_info=True)
                     pass
             
             # Extract topics using keyword extraction
@@ -323,6 +324,7 @@ class PredictiveCognitionEngine:
                     if "interest" in content or "like" in content:
                         user_interests.append(content[:100])
             except Exception:
+                logger.error("Silent exception caught", exc_info=True)
                 pass
             
             return {

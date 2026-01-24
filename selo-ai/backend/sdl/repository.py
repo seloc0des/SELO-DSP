@@ -54,7 +54,8 @@ class LearningRepository:
                     learning.concepts.append(concept)
             
             session.add(learning)
-            await session.commit()  # Learning creation uses commit, not just flush
+            await session.flush()
+            # Note: get_session context manager handles commit automatically
             
             logger.info(f"Created learning {learning.id} for user {learning.user_id}")
             return learning
@@ -179,7 +180,7 @@ class LearningRepository:
             # Update the timestamp
             learning.updated_at = datetime.now(timezone.utc)
             
-            await session.commit()
+            # Note: get_session context manager handles commit automatically
             
             logger.info(f"Updated learning {learning.id}")
             return learning
@@ -200,7 +201,7 @@ class LearningRepository:
             
             # Delete the learning
             await session.delete(learning)
-            await session.commit()
+            # Note: get_session context manager handles commit automatically
         
         logger.info(f"Deleted learning {learning_id}")
         return True
@@ -313,7 +314,8 @@ class LearningRepository:
                 concept.id = concept_data['id']
                 
             session.add(concept)
-            await session.commit()  # Concept creation uses commit, not just flush
+            await session.flush()
+            # Note: get_session context manager handles commit automatically
             
             logger.info(f"Created concept {concept.id} ({concept.name}) for user {concept.user_id}")
             return concept
@@ -407,7 +409,7 @@ class LearningRepository:
             # Update the timestamp
             concept.updated_at = datetime.now(timezone.utc)
             
-            await session.commit()
+            # Note: get_session context manager handles commit automatically
             
             logger.info(f"Updated concept {concept.id} ({concept.name})")
             return concept
@@ -422,7 +424,7 @@ class LearningRepository:
         async with get_session(self.db_session) as session:
             # Remove it
             await session.delete(concept)
-            await session.commit()
+            # Note: get_session context manager handles commit automatically
         
         logger.info(f"Deleted concept {concept_id}")
         return True
@@ -458,7 +460,8 @@ class LearningRepository:
                 )
                 session.add(reverse_connection)
             
-            await session.commit()
+            await session.flush()
+            # Note: get_session context manager handles commit automatically
             
             logger.info(f"Created connection {connection.id} between concepts")
             return connection
@@ -583,7 +586,7 @@ class LearningRepository:
                     # Remove the reverse connection
                     await session.delete(reverse_connection)
             
-            await session.commit()
+            # Note: get_session context manager handles commit automatically
             
             logger.info(f"Updated connection {connection.id}")
             return connection
@@ -617,7 +620,7 @@ class LearningRepository:
                 
             # Remove the connection
             await session.delete(connection)
-            await session.commit()
+            # Note: get_session context manager handles commit automatically
         
         logger.info(f"Deleted connection {connection_id}")
         return True

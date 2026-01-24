@@ -147,10 +147,10 @@ class TokenBudgetManager:
             if tier_cap > 0:
                 return tier_cap
         except Exception:
-            # Fall through to default
-            pass
+            
+            logger.error("Silent exception caught", exc_info=True)
 
-        # 3) Default safe fallback (standard tier)
+            # pass
         return 640
     
     @classmethod

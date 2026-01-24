@@ -57,11 +57,14 @@ class SagaRepository:
                 )
                 session.add(step)
             
-            await session.commit()
-            await session.refresh(saga)
+            await session.flush()
             
             logger.info(f"Created saga {saga.id} ({saga.saga_type}) with {len(steps_data)} steps")
-            return await self.get_saga(saga.id, session=session)
+            # Note: get_session context manager handles commit; refresh after context would fail
+            # Return saga dict directly to avoid detached instance issues
+            saga_dict = saga.to_dict()
+            saga_dict['steps'] = [step.to_dict() for step in sorted(saga.steps, key=lambda s: s.step_index)]
+            return saga_dict
     
     async def get_saga(
         self,
@@ -107,7 +110,7 @@ class SagaRepository:
             await session.execute(
                 update(Saga).where(Saga.id == saga_id).values(**updates)
             )
-            await session.commit()
+            # Note: get_session context manager handles commit automatically
             
             return await self.get_saga(saga_id, session=session)
     
@@ -135,7 +138,7 @@ class SagaRepository:
             await session.execute(
                 update(SagaStep).where(SagaStep.id == step_id).values(**updates)
             )
-            await session.commit()
+            # Note: get_session context manager handles commit automatically
             
             # Get updated step
             result = await session.execute(

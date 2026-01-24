@@ -55,7 +55,7 @@ class AffectiveStateRepository:
                     .where(AffectiveState.id == state_id)
                     .values(**state_payload)
                 )
-                await db.commit()
+                # Note: get_session context manager handles commit automatically
                 logger.debug("Updated affective state %s", state_id)
                 result = await db.execute(
                     select(AffectiveState).where(AffectiveState.id == state_id)
@@ -65,8 +65,7 @@ class AffectiveStateRepository:
             else:
                 model = AffectiveState(**state_payload)
                 db.add(model)
-                await db.commit()
-                await db.refresh(model)
+                await db.flush()
                 state_payload = model.to_dict()
                 logger.debug("Created new affective state %s", state_payload.get("id"))
             return state_payload
@@ -144,8 +143,8 @@ class AgentGoalRepository:
         async with get_session(session) as db:
             model = AgentGoal(**goal_payload)
             db.add(model)
-            await db.commit()
-            await db.refresh(model)
+            await db.flush()
+            # Note: get_session context manager handles commit automatically
             logger.info("Created agent goal %s", model.id)
             return model.to_dict()
 
@@ -184,7 +183,7 @@ class AgentGoalRepository:
                 .where(AgentGoal.id == goal_id)
                 .values(**updates)
             )
-            await db.commit()
+            # Note: get_session context manager handles commit automatically
             result = await db.execute(select(AgentGoal).where(AgentGoal.id == goal_id))
             model = result.scalar_one_or_none()
             if model:
@@ -251,8 +250,8 @@ class PlanStepRepository:
         async with get_session(session) as db:
             model = PlanStep(**step_payload)
             db.add(model)
-            await db.commit()
-            await db.refresh(model)
+            await db.flush()
+            # Note: get_session context manager handles commit automatically
             logger.debug("Created plan step %s", model.id)
             return model.to_dict()
 
@@ -291,7 +290,7 @@ class PlanStepRepository:
                 .where(PlanStep.id == step_id)
                 .values(**updates)
             )
-            await db.commit()
+            # Note: get_session context manager handles commit automatically
             result = await db.execute(select(PlanStep).where(PlanStep.id == step_id))
             model = result.scalar_one_or_none()
             return model.to_dict() if model else None
@@ -384,8 +383,8 @@ class AutobiographicalEpisodeRepository:
         async with get_session(session) as db:
             model = AutobiographicalEpisode(**episode_payload)
             db.add(model)
-            await db.commit()
-            await db.refresh(model)
+            await db.flush()
+            # Note: get_session context manager handles commit automatically
             logger.info("Created autobiographical episode %s", model.id)
             return model.to_dict()
 
@@ -427,8 +426,8 @@ class MetaReflectionRepository:
         async with get_session(session) as db:
             model = MetaReflectionDirective(**payload)
             db.add(model)
-            await db.commit()
-            await db.refresh(model)
+            await db.flush()
+            # Note: get_session context manager handles commit automatically
             logger.info("Created meta reflection directive %s", model.id)
             return model.to_dict()
 
@@ -444,7 +443,7 @@ class MetaReflectionRepository:
                 .where(MetaReflectionDirective.id == directive_id)
                 .values(**updates)
             )
-            await db.commit()
+            # Note: get_session context manager handles commit automatically
             result = await db.execute(
                 select(MetaReflectionDirective).where(MetaReflectionDirective.id == directive_id)
             )
@@ -483,5 +482,5 @@ class MetaReflectionRepository:
             await db.execute(
                 delete(MetaReflectionDirective).where(MetaReflectionDirective.id == directive_id)
             )
-            await db.commit()
+            # Note: get_session context manager handles commit automatically
             logger.debug("Deleted meta reflection directive %s", directive_id)

@@ -71,6 +71,7 @@ class ReflectionRepository:
                             dt = datetime.fromisoformat(val.replace('Z', '+00:00'))
                             return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
                         except Exception:
+                            logger.error("Silent exception caught", exc_info=True)
                             pass
                     # Fallback to now if unrecognized
                     return now
@@ -105,6 +106,7 @@ class ReflectionRepository:
                                 if k in ("model", "coherence_rationale", "notes") or isinstance(v, (str, int, float, list, dict)):
                                     result_blob["metadata"][k] = v
                         except Exception:
+                            logger.error("Silent exception caught", exc_info=True)
                             pass
                     if reflection_data.get("trait_changes"):
                         result_blob["trait_changes"] = reflection_data.get("trait_changes")
@@ -691,6 +693,7 @@ class ReflectionRepository:
                             payload["answer_confidence_score"] = confidence_score
                         question.raw_payload = payload
                 except Exception:
+                    logger.error("Silent exception caught", exc_info=True)
                     pass
 
                 return question.to_dict()

@@ -113,6 +113,7 @@ def get_script_app_context(mock_mode: bool = False) -> Dict[str, Any]:
                 if pending:
                     loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
             except Exception:
+                logger.error("Silent exception caught", exc_info=True)
                 pass
             # Don't close the loop here - let it stay open for the script's duration
             # loop.close()
@@ -131,6 +132,7 @@ def get_script_app_context(mock_mode: bool = False) -> Dict[str, Any]:
         try:
             services["is_mock_context"] = False
         except Exception:
+            logger.error("Silent exception caught", exc_info=True)
             pass
         logger.info(f"Script context initialized with {len(services)} services")
         return services
@@ -280,7 +282,9 @@ class ScriptContext:
                     try:
                         loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
                     except Exception:
-                        pass  # Ignore cleanup errors
+                        logger.error("Silent exception caught", exc_info=True)
+
+                        # pass
                 
                 # Close the event loop to ensure clean exit
                 loop.close()

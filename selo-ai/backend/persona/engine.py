@@ -297,6 +297,7 @@ class PersonaEngine:
                         "approved": True,
                     })
             except Exception:
+                logger.error("Silent exception caught", exc_info=True)
                 pass
 
             return {"success": True, "changed": bool(changes_applied), "persona_updates": persona_updates, "trait_changes": trait_changes}
@@ -438,6 +439,7 @@ class PersonaEngine:
                 try:
                     delattr(self, "_current_persona_id")
                 except Exception:
+                    logger.error("Silent exception caught", exc_info=True)
                     pass
             return {"success": True, "system_prompt": prompt_text, "persona": persona_dict}
         except Exception as e:
@@ -644,11 +646,15 @@ class PersonaEngine:
                         )
                         category = default_category
                     
+                    # Apply delta to a neutral baseline (0.5) for new traits
+                    # This ensures deltas like +0.1 result in 0.6, not 0.1
+                    baseline_value = 0.5
+                    initial_value = clamp(baseline_value + delta)
                     await self.persona_repo.create_trait({
                         "persona_id": persona_id,
                         "category": category,
                         "name": name,
-                        "value": max(0.0, min(1.0, delta)),
+                        "value": initial_value,
                         "description": f"Trait created during evolution: {name}",
                         "confidence": 0.7,
                         "stability": 0.3,
@@ -657,8 +663,8 @@ class PersonaEngine:
                     changes["traits"].append({
                         "name": name,
                         "category": category,
-                        "old_value": None,
-                        "new_value": delta,
+                        "old_value": baseline_value,
+                        "new_value": initial_value,
                         "reason": reason
                     })
             # Log evolution
@@ -914,10 +920,10 @@ class PersonaEngine:
             )
             preface = f"{preface}\n\n{capabilities_section}"
         except Exception:
-            # Fail-soft: if capability computation fails, keep existing preface
-            pass
-        
-        # Import centralized constraints to ensure consistency
+            
+            logger.error("Silent exception caught", exc_info=True)
+
+            # pass
         from backend.constraints import CoreConstraints, EthicalGuardrails, IdentityConstraints
         
         # Inject relationship context (Week 1 + Week 2: single-user optimization with continuity)
@@ -970,6 +976,7 @@ class PersonaEngine:
                                 memory_lines.append(f"- {mem.narrative[:100]}..." if len(mem.narrative) > 100 else f"- {mem.narrative}")
                             memories_text = "\n\nRecent significant moments:\n" + "\n".join(memory_lines)
                     except Exception:
+                        logger.error("Silent exception caught", exc_info=True)
                         pass
 
                     # Week 4: Shared language / inside jokes (from relationship_state)
@@ -988,6 +995,7 @@ class PersonaEngine:
                             if phrases:
                                 inside_jokes_text = "\n\nShared language:\n" + "\n".join(f"- {p}" for p in phrases)
                     except Exception:
+                        logger.error("Silent exception caught", exc_info=True)
                         pass
 
                     # Week 3: Pending anticipated events (temporal follow-ups)
@@ -1004,6 +1012,7 @@ class PersonaEngine:
                                     "If it feels natural, check in about this early in the conversation."
                                 )
                     except Exception:
+                        logger.error("Silent exception caught", exc_info=True)
                         pass
                     
                     relationship_context = f"""

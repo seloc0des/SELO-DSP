@@ -1446,6 +1446,7 @@ class ReflectionProcessor:
                         trait_strs = [f"{k}={v:.2f}" for k, v in traits_dict.items()][:5]
                         persona_traits = ", ".join(trait_strs)
                 except (AttributeError, KeyError, TypeError):
+                    logger.debug("Expected exception caught", exc_info=True)
                     pass
             
             # Build classifier prompt
@@ -1610,8 +1611,10 @@ Your decision:"""
                                 if isinstance(context[k], dict) and isinstance(v, dict):
                                     context[k].update({kk: vv for kk, vv in v.items() if kk not in context[k]})
                             except (KeyError, AttributeError, TypeError):
+                                logger.debug("Expected exception caught", exc_info=True)
                                 pass
             except (KeyError, AttributeError, TypeError):
+                logger.debug("Expected exception caught", exc_info=True)
                 pass
             
             # Log context stats
@@ -1648,6 +1651,7 @@ Your decision:"""
                 try:
                     persona_name = (context.get("persona", {}) or {}).get("name", "")
                 except (AttributeError, KeyError, TypeError):
+                    logger.debug("Expected exception caught", exc_info=True)
                     pass
 
                 # Paragraph guidance: keep inner/message reflections slightly tighter
@@ -2014,6 +2018,7 @@ Please regenerate your reflection following these identity constraints strictly.
                             f"LLM raw reflection output: len={len(_raw)}, fenced={_fenced}, json_wrapped={_json_wrapped}. Head: {_raw[:200]}"
                         )
                     except (ValueError, KeyError, AttributeError):
+                        logger.debug("Expected exception caught", exc_info=True)
                         pass
                 except asyncio.TimeoutError:
                     logger.error("Reflection LLM timed out despite disabled asyncio timeout.")
@@ -2111,6 +2116,7 @@ Please regenerate your reflection following these identity constraints strictly.
                     if not (pre_constraints or {}).get('compliant', True):
                         needs_repair = True
                 except (AttributeError, KeyError, TypeError):
+                    logger.debug("Expected exception caught", exc_info=True)
                     pass
                 if needs_repair:
                     repaired = await self._repair_reflection(
@@ -2180,6 +2186,7 @@ Please regenerate your reflection following these identity constraints strictly.
                                 if token_count <= 8:
                                     return True
                     except (ValueError, AttributeError, IndexError):
+                        logger.debug("Expected exception caught", exc_info=True)
                         pass
 
                     # Ensure the latest user message is explicitly grounded if available
@@ -2649,6 +2656,7 @@ Please regenerate your reflection following these identity constraints strictly.
                 if stored_reflection is not None and stored_reflection.get("turn_id") in (None, ""):
                     stored_reflection["turn_id"] = turn_id
             except (KeyError, AttributeError, TypeError):
+                logger.debug("Expected exception caught", exc_info=True)
                 pass
             
             # Step 8: Check coherence and identity constraints (async safe)
@@ -2665,6 +2673,7 @@ Please regenerate your reflection following these identity constraints strictly.
                         stored_reflection["result"].setdefault("trait_changes", reflection_result.get("trait_changes", []))
                         stored_reflection["result"].setdefault("themes", reflection_result.get("themes", []))
                 except (AttributeError, KeyError, TypeError):
+                    logger.debug("Expected exception caught", exc_info=True)
                     pass
                 stored_reflection.setdefault("_meta", {})
                 stored_reflection["_meta"].update({
@@ -2863,6 +2872,7 @@ Please regenerate your reflection following these identity constraints strictly.
                     if persona and hasattr(persona, "name") and persona.name and persona.name.strip():
                         persona_name = persona.name.strip()
             except Exception:
+                logger.error("Silent exception caught", exc_info=True)
                 pass
             
             # Build a compact repair prompt - ONLY rewrite the narrative content
@@ -2971,6 +2981,7 @@ Please regenerate your reflection following these identity constraints strictly.
                     if persona and hasattr(persona, "name") and persona.name and persona.name.strip():
                         persona_name = persona.name.strip()
             except Exception:
+                logger.error("Silent exception caught", exc_info=True)
                 pass
 
             # Word-count bounds from existing configuration
@@ -3685,6 +3696,7 @@ Please regenerate your reflection following these identity constraints strictly.
                     f"Parsing reflection content: len={len(content)}, fenced={_fenced}, json_wrapped={_json_wrapped}"
                 )
             except Exception:
+                logger.error("Silent exception caught", exc_info=True)
                 pass
             
             # Detect non-English characters (safety net for code-switching)
@@ -4828,12 +4840,15 @@ Please regenerate your reflection following these identity constraints strictly.
                                     payload['traits'] = [t.to_dict() for t in traits]
                                     payload['persona_id'] = getattr(persona, 'id', None)
                                 except Exception:
-                                    # If trait fetch fails, omit traits without breaking event
-                                    pass
-                except Exception:
-                    # Silent failure: do not block event emission
-                    pass
+                                    
+                                    logger.error("Silent exception caught", exc_info=True)
 
+                                    # pass
+                except Exception:
+                    
+                    logger.error("Silent exception caught", exc_info=True)
+
+                    # pass
                 reflection_ns = self.reflection_namespace
                 if reflection_ns is None:
                     try:

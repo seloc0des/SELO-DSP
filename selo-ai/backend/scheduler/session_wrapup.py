@@ -1,3 +1,4 @@
+import logging
 import asyncio
 import hashlib
 import os
@@ -14,6 +15,8 @@ from typing import Optional, Any, Dict
 # - SESSION_WRAPUP_TIMEOUT_S: overall timeout per reflection (default: 15)
 
 
+
+logger = logging.getLogger(__name__)
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -92,6 +95,7 @@ async def _wrapup_session(app, session_id: str, last_message_at: Optional[dateti
                     user_id=session_id,
                 )
         except Exception:
+            logger.error("Silent exception caught", exc_info=True)
             pass
 
         # Extract memory from the summary
@@ -105,6 +109,7 @@ async def _wrapup_session(app, session_id: str, last_message_at: Optional[dateti
                     conversation_id=str((await conversation_repo.get_or_create_conversation(session_id, (await services.get("user_repo").get_or_create_default_user()).id)).id),
                 )
         except Exception:
+            logger.error("Silent exception caught", exc_info=True)
             pass
 
     except asyncio.TimeoutError:
@@ -193,6 +198,7 @@ async def session_wrapup_loop(app):
                         try:
                             marker.write_text("done\n", encoding="utf-8")
                         except Exception:
+                            logger.error("Silent exception caught", exc_info=True)
                             pass
                     except Exception:
                         continue
@@ -200,8 +206,10 @@ async def session_wrapup_loop(app):
             except asyncio.CancelledError:
                 break
             except Exception:
-                # Swallow and continue next tick
-                pass
+                
+                logger.error("Silent exception caught", exc_info=True)
+
+                # pass
             await asyncio.sleep(max(10.0, scan_interval_s))
     except asyncio.CancelledError:
         return

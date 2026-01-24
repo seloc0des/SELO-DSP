@@ -88,6 +88,8 @@ class UserRepository:
             if isinstance(e, IntegrityError) and 'users_username_key' in str(e):
                 self.logger.warning(f"User already exists (race condition detected), retrying SELECT...")
                 try:
+                    # Rollback the failed transaction before retrying
+                    await session.rollback()
                     result = await session.execute(select(User).limit(1))
                     user = result.scalar_one_or_none()
                     if user:
