@@ -996,7 +996,9 @@ EOF
     echo "OLLAMA_KEEP_ALIVE=15m" >> "$be_env"
   fi
   if ! grep -q '^OLLAMA_NUM_PARALLEL=' "$be_env"; then
-    echo "OLLAMA_NUM_PARALLEL=1" >> "$be_env"
+    # CRITICAL: Set to 2 to allow reflection + chat models to run concurrently
+    # NUM_PARALLEL=1 causes all requests to queue serially (5+ minute delays)
+    echo "OLLAMA_NUM_PARALLEL=2" >> "$be_env"
   fi
   if ! grep -q '^OLLAMA_MAX_LOADED_MODELS=' "$be_env"; then
     # Tier-aware: standard tier (8GB) can only handle 1 model in VRAM safely
@@ -1374,11 +1376,13 @@ ensure_runtime_after_env() {
     fi
     
     # Create baseline override with CPU-safe defaults
+    # CRITICAL: NUM_PARALLEL=2 allows reflection + chat models to run concurrently
+    # Without this, all LLM requests queue serially causing 5+ minute delays
     sudo bash -c "cat > '$OL_OVERRIDE'" <<'OVREOF'
 [Service]
 # CPU Configuration - minimal threads for GPU-first operation
 Environment=OLLAMA_NUM_THREAD=2
-Environment=OLLAMA_NUM_PARALLEL=1
+Environment=OLLAMA_NUM_PARALLEL=2
 Environment=OLLAMA_KEEP_ALIVE=30m
 OVREOF
     
@@ -1407,6 +1411,13 @@ OVREOF
             keep_alive="1h"
             max_loaded_models=3
             echo "  → High-end GPU detected: 16K context, 2 parallel requests, 3 models max"
+        elif [ "$gpu_vram" -ge 12000 ]; then
+            # 12-16GB GPU: Good performance (RTX 4060 Ti 16GB, RTX 3060 12GB)
+            num_ctx=8192
+            num_parallel=2
+            keep_alive="30m"
+            max_loaded_models=2
+            echo "  → Mid-high GPU detected: 8K context, 2 parallel requests, 2 models max"
         else
             # This should never happen after hardware validation
             echo "  → ERROR: GPU has insufficient VRAM (${gpu_vram}MB). Installation should have been blocked."

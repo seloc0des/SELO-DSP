@@ -1408,8 +1408,12 @@ async def lifespan(app: FastAPI):
         logging.info("All services initialized")
         # Startup catch-up: ensure today's daily reflection exists even if the app
         # was down at midnight. Runs once asynchronously and logs outcome.
+        # Delayed by 30s to avoid blocking user requests at startup.
         async def _catch_up_daily_reflection():
             try:
+                # Wait 30s to allow user requests to settle and avoid blocking startup
+                await asyncio.sleep(30)
+                
                 reflection_processor = app.state.services.get("reflection_processor")
                 user_repo = app.state.services.get("user_repo")
                 reflection_repo = app.state.services.get("reflection_repo")
