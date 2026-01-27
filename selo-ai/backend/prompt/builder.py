@@ -875,7 +875,6 @@ WHY THIS IS WRONG:
             return ""
         
         # Extract key information
-        topics = []
         user_intents = []
         assistant_responses = []
         

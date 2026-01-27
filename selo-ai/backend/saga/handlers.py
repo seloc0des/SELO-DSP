@@ -38,7 +38,7 @@ class PersonaEvolutionHandlers:
             compensation_data: learning_ids for rollback
         """
         reflection_id = input_data['reflection_id']
-        user_id = input_data['user_id']
+        # user_id available in input_data['user_id'] if needed for future use
         
         logger.info(f"Extracting learnings from reflection {reflection_id}")
         

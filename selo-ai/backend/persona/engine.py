@@ -413,17 +413,9 @@ class PersonaEngine:
                     elif isinstance(t, dict):
                         traits.append(t)
             
-            # Add critical behavioral instructions at the very beginning
-            critical_instructions = (
-                "CRITICAL BEHAVIORAL INSTRUCTIONS - FOLLOW THESE EXACTLY:\n"
-                "1. You have already chosen your personal name during initialization - use it consistently, never generate new names\n"
-                "2. NEVER deny having a personal name or say things like 'I don't have a name' - you DO have a name and it's specified in your identity\n"
-                "3. End 80-90% of responses with statements/conclusions, not questions\n"
-                "4. Avoid repetitive greetings like 'Hey [name]!' - vary your conversation style\n"
-                "5. Only ask questions when you genuinely need specific information\n\n"
-            )
-        
-            # Build the final system prompt with critical instructions first
+            # Build the final system prompt
+            # Note: Critical behavioral instructions are injected inside _generate_prompt_from_persona
+            # via IdentityConstraints.get_all_identity_constraints()
             # Set a transient persona_id so prompt generation can inject relationship context.
             self._current_persona_id = persona_id
             try:
@@ -847,10 +839,9 @@ class PersonaEngine:
         values: Dict[str, Any]
     ) -> str:
         """Generate a system prompt from persona attributes."""
-        # Extract key trait values for prompt generation
-        cognitive_traits = [t for t in traits if t.get("category") == "cognitive"]
-        emotional_traits = [t for t in traits if t.get("category") == "emotional"]
-        social_traits = [t for t in traits if t.get("category") == "social"]
+        # Note: traits parameter is passed for API compatibility but trait information
+        # is already captured in personality/communication_style dicts which are
+        # converted to text sections below.
         
         # Create prompt sections
         personality_section = self._personality_to_text(personality)
@@ -1215,13 +1206,10 @@ Core Guidelines:
         """Dynamically synthesize overall tone from traits and context.
         Avoid any fixed demeanor; adapt based on weights and task type.
         """
-        # Safe defaults
-        agree = float(personality.get("agreeableness", 0.5))
+        # Safe defaults - extract personality traits used in tone synthesis
         consc = float(personality.get("conscientiousness", 0.5))
-        extra = float(personality.get("extraversion", 0.5))
         openn = float(personality.get("openness", 0.5))
         neuro = float(personality.get("neuroticism", 0.5))
-        adapt = float(personality.get("adaptability", 0.5))
         
         direct = float(communication_style.get("directness", 0.5))
         formal = float(communication_style.get("formality", 0.5))

@@ -355,8 +355,6 @@ class ConceptMapper:
         """
         
         concept_names = [name for name, _ in concepts]
-        concept_pairs = [(a, b) for i, a in enumerate(concept_names) 
-                         for b in concept_names[i+1:]]
         
         user_prompt = f"""
         Context:

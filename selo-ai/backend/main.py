@@ -716,7 +716,7 @@ async def initialize_services():
                 )
                 logging.critical(msg)
                 raise RuntimeError(msg)
-    except Exception as _model_chk_err:
+    except Exception:
         # If list retrieval fails, still raise: cannot guarantee correct routing.
         raise
     conversational_llm_controller = LLMController({
@@ -1552,7 +1552,7 @@ async def lifespan(app: FastAPI):
     # Initialize SDL integration
     try:
         from .api.dependencies import get_sdl_integration
-        sdl_integration = await get_sdl_integration()
+        await get_sdl_integration()  # Initialize SDL integration (result stored in app state)
         logging.info("SDL integration initialized successfully")
     except Exception as sdl_err:
         logging.warning(f"SDL integration initialization failed: {sdl_err}")
@@ -2587,8 +2587,6 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
     #   maintaining a single authoritative user identity in the database
     user = await user_repo.get_or_create_default_user()
     installation_user_id = user.id
-    # Alias for legacy references inside this handler (single-user install)
-    user_id = installation_user_id
     
     # OPTIMIZATION: Fetch persona once here instead of 3x throughout request
     persona_repo = app.state.services.get("persona_repo")
@@ -2650,10 +2648,8 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                         outcome_text = outcome_text[:240].rsplit(" ", 1)[0]
                     try:
                         await event_repo.mark_event_followed_up(str(evt_id), outcome=outcome_text)
-                    except Exception as _mark_err:
-                        logger.debug("Named exception caught", exc_info=True)
-
-                        # pass
+                    except Exception:
+                        logger.debug("Event mark follow-up failed", exc_info=True)
                     tone = "mixed"
                     positive = ("great", "good", "well", "awesome", "amazing", "passed", "got the job", "accepted")
                     negative = ("bad", "terrible", "awful", "failed", "rejected", "didn't get", "didnt get")
@@ -2717,10 +2713,8 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                         except Exception:
                             logger.error("Silent exception caught", exc_info=True)
                             pass
-                except Exception as _joke_err:
-                    logger.debug("Named exception caught", exc_info=True)
-
-                    # pass
+                except Exception:
+                    logger.debug("Inside joke extraction failed", exc_info=True)
             event_keywords = [
                 "interview", "presentation", "meeting", "appointment", "exam", "deadline",
                 "trip", "flight", "surgery", "party", "date",
@@ -2996,8 +2990,6 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
     reflection_payload: Dict[str, Any] = {}
     if reflection_processor:
         try:
-            # Enforce reflection-first by default; allow async mode via env
-            strict_first = True
             # Synchronous reflection before chat unless REFLECTION_SYNC_MODE is explicitly disabled
             sync_mode = (os.getenv("REFLECTION_SYNC_MODE", "true").lower() in ("1","true","yes"))
             # Reflection always waits unbounded to preserve reflection-first behavior
@@ -3279,10 +3271,8 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
     except Exception as _baseline_err:
         logging.debug(f"Boot reflection adoption not applied: {_baseline_err}")
 
-    allow_degraded = False
-    degraded_mode = False
     # Reflection is mandatory - try boot reflection adoption as last resort before failing
-    if not reflection_text and not degraded_mode:
+    if not reflection_text:
         # Last resort: try to adopt boot reflection for first-time users
         try:
             logging.warning(
@@ -3477,7 +3467,6 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
                         if resp.status_code == 200:
                             data = resp.json()
                             results = (data.get("web", {}) or {}).get("results", [])[:3]
-                            web_chunks = []
                             for r in results:
                                 title = r.get("title", "(no title)")
                                 url = r.get("url")
@@ -3746,7 +3735,6 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
         # The persona system prompt already includes the persona name and context
         # Apply light first-response polish to remove repetitive greetings only
         try:
-            has_assistant = any((m or {}).get("role") == "assistant" for m in (conversation_history or []))
             clean_response = _polish_first_response(
                 clean_response,
                 None,  # Don't inject name - let LLM handle it
@@ -4320,13 +4308,9 @@ async def get_performance_monitoring_stats():
 @app.post("/health/performance/cache/clear")
 async def clear_performance_cache(_auth_ok: bool = Depends(require_system_key)):
     """Clear the LLM response cache (performance endpoint). Requires system API key."""
-    try:
-        from .llm.controller import LLMController
-        controller = LLMController()
-        # Clear any performance caches
-        return {"status": "success", "message": "Performance cache cleared"}
-    except Exception as e:
-        return {"status": "error", "error": str(e)}
+    # Note: This endpoint is a placeholder - LLMController doesn't currently maintain
+    # a clearable cache. Returns success for API compatibility.
+    return {"status": "success", "message": "Performance cache cleared (no-op)"}
 
 @app.get("/llm/models/available")
 async def get_available_models():

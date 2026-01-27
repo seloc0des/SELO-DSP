@@ -55,7 +55,6 @@ class PlannerService:
             goal_id = goal.get("id")
             existing_steps = pending_by_goal.get(goal_id, [])
             remapped_directives = directives_by_goal.get(goal_id, [])
-            desc = goal.get("description", "")
             # Avoid generating duplicate reminders if there are already actionable steps
             if existing_steps:
                 continue

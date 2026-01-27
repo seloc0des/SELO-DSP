@@ -117,7 +117,8 @@ def test_faiss_gpu_availability():
     """Test FAISS GPU support detection."""
     try:
         import faiss
-        gpu_available = hasattr(faiss, 'StandardGpuResources')
+        # Check if GPU support exists (result not needed, just verifying detection works)
+        _ = hasattr(faiss, 'StandardGpuResources')
         # This test passes if FAISS is available, regardless of GPU support
         assert True
     except ImportError:

@@ -787,7 +787,7 @@ if __name__ == "__main__":
 
     async def main():
         # Ensure we can acquire a session from the centralized factory (sanity check)
-        async with AsyncSessionLocal() as _test_session:  # type: ignore
+        async with AsyncSessionLocal():  # Sanity check session acquisition
             pass
         if args.drop:
             await drop_tables()

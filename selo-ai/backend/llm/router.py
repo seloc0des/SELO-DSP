@@ -147,7 +147,7 @@ class LLMRouter:
         # Extract reflection data and persona_name if provided (for chat tasks)
         reflection_data = kwargs.pop('reflection_data', None)
         persona_name = kwargs.pop('persona_name', "")
-        latest_user_message = kwargs.pop('latest_user_message', "")
+        kwargs.pop('latest_user_message', None)  # Consumed but not used directly here
         request_stream = bool(kwargs.pop('request_stream', False))
         model_override = kwargs.pop('model', None)
 

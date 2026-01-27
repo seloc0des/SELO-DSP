@@ -94,7 +94,6 @@ def add_logging_setup(content: str, filepath: str) -> str:
                 if not (lines[i].strip().startswith('import ') or 
                        lines[i].strip().startswith('from ')):
                     # Insert logger before first non-import code
-                    module_name = Path(filepath).stem
                     lines.insert(i, f'\nlogger = logging.getLogger(__name__)')
                     break
     

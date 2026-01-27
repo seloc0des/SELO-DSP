@@ -620,14 +620,7 @@ class SDLEngine:
     async def _update_vector_store(self, learning: Learning) -> Optional[str]:
         """Update vector store with learning content."""
         try:
-            # Get vector embedding for the learning content
-            vector = await self.llm_router.route(
-                task_type="embedding",
-                prompt=learning.content,
-                model="analytical"
-            )
-            
-            # Store in vector database
+            # Store in vector database (store_embedding generates the embedding internally)
             vector_id = await self.vector_store.store_embedding(
                 text=learning.content,
                 embedding_id=learning.id,

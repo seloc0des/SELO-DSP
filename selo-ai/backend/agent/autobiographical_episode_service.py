@@ -266,6 +266,7 @@ class AutobiographicalEpisodeService:
             "persona_name": persona_name,
             "trigger_reason": trigger_reason or "unspecified",
             "affective_state": affective_snapshot,
+            "active_goals": active_goals,
             "plan_steps": plan_steps_block,
             "meta_directives": meta_directives,
             "recent_reflections": recent_reflections,

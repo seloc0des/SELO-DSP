@@ -33,7 +33,6 @@ def compute_capabilities() -> Dict[str, Any]:
     persona_cfg = cfg.get_persona_config()
     reflection_cfg = cfg.get_reflection_config()
     sdl_cfg = cfg.get_sdl_config()
-    socketio_cfg = cfg.get_socketio_config()
     llm_cfg = cfg.get_llm_config()
 
     capabilities = {

@@ -376,7 +376,7 @@ def with_telemetry(validator_name: str, task_type: str = "unknown"):
                 )
                 
                 return result
-            except Exception as e:
+            except Exception:
                 duration_ms = (time.time() - start) * 1000
                 record_validation(
                     task_type=task_type,

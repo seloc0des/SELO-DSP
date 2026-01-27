@@ -202,7 +202,7 @@ class MemoryConsolidator:
         try:
             # This is a simplified approach - in a real implementation, you might want to track
             # which conversations have been processed for memory extraction
-            cutoff_time = datetime.now(timezone.utc) - timedelta(hours=self.lookback_hours)
+            # cutoff_time would be: datetime.now(timezone.utc) - timedelta(hours=self.lookback_hours)
             
             # For now, we'll use a simple approach and let the deduplication handle duplicates
             # In a production system, you'd want to track processing state

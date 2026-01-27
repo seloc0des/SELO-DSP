@@ -396,7 +396,7 @@ class LearningRepository:
         if not concept:
             return None
         
-        async with get_session(self.db_session) as session:
+        async with get_session(self.db_session):
             # Update fields
             update_data = {
                 k: v for k, v in concept_data.items() 

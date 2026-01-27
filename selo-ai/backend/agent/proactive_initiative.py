@@ -573,7 +573,6 @@ Generate the message (just the text, no quotes):"""
             persona = await self.persona_repo.get_persona(persona_id=persona_id)
             persona_name = getattr(persona, "name", "SELO")
             
-            celebration_type = celebration.get("type", "")
             goal = celebration.get("goal", {})
             goal_description = goal.get("description", "something")
             

@@ -109,7 +109,7 @@ class CircuitBreaker:
                 self._on_success()
                 return result
                 
-            except self.config.expected_exception as e:
+            except self.config.expected_exception:
                 self._on_failure()
                 raise
             except asyncio.TimeoutError:
@@ -134,7 +134,7 @@ class CircuitBreaker:
                 self._on_success()
                 return result
                 
-            except self.config.expected_exception as e:
+            except self.config.expected_exception:
                 self._on_failure()
                 raise
                 

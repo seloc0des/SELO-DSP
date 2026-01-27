@@ -93,7 +93,7 @@ async def validate_persona_integration_with_context(persona_integration, service
     """Validate persona integration functionality."""
     logger.info("\n=== Testing Persona Integration ===\n")
     test_results = []
-    test_user_id = str(uuid.uuid4())
+    # test_user_id = str(uuid.uuid4())  # Available if needed for future tests
     
     try:
         # Test integration initialization
@@ -174,7 +174,7 @@ async def validate_persona_repository_with_context(persona_repo, services):
             else:
                 test_results.append({"test": "persona_retrieval", "success": True, "message": "Retrieval functional (no persona found)"})
                 logger.info("✅ Persona retrieval: Success (no persona found)")
-        except Exception as e:
+        except Exception:
             # This is expected if no persona exists
             test_results.append({"test": "persona_retrieval", "success": True, "message": "Retrieval functional (expected exception)"})
             logger.info("✅ Persona retrieval: Success (expected exception)")

@@ -1315,7 +1315,7 @@ class ReflectionProcessor:
         enabled = classifier_config.get("enabled", True)
         mandatory_interval = classifier_config.get("mandatory_interval", 10)
         mandatory_early_turns = classifier_config.get("mandatory_early_turns", 5)
-        threshold_mode = classifier_config.get("threshold", "balanced")
+        # threshold_mode = classifier_config.get("threshold", "balanced")  # Reserved for future use
         
         # If classifier disabled, always reflect (current behavior)
         if not enabled:
@@ -3708,9 +3708,7 @@ Please regenerate your reflection following these identity constraints strictly.
                 if translated_content != content:
                     content = translated_content
             content_stripped = content.strip()
-            fence_match = None
             if content_stripped.startswith("```") and content_stripped.endswith("```"):
-                fence_match = True
                 # Remove opening and closing fences, handling optional language tag (e.g., ```json)
                 lines = content_stripped.splitlines()
                 if len(lines) >= 2:
@@ -5034,7 +5032,7 @@ Please regenerate your reflection following these identity constraints strictly.
         """
         primary_emotion = str(emotional_state.get('primary', '')).lower()
         intensity = float(emotional_state.get('intensity', 0.5))
-        secondary_emotions = emotional_state.get('secondary', [])
+        # secondary_emotions available via emotional_state.get('secondary', []) if needed
         
         # Base adjustment structure
         adjustment = {
@@ -5726,7 +5724,6 @@ Please regenerate your reflection following these identity constraints strictly.
         
         # Fix 10: Convert requests to internal intentions
         def _convert_request(match: re.Match) -> str:
-            modal = match.group(1)
             action = match.group(2)
             return f"I consider {action}"
         

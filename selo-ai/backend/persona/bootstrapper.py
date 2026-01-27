@@ -1405,7 +1405,6 @@ Write your genuine reaction now:"""
         try:
             # Extract values with safe defaults
             values = seed.get("values", {}) or {}
-            principles = (values.get("principles") or []) if isinstance(values, dict) else []
             core_vals = (values.get("core") or []) if isinstance(values, dict) else []
             style = seed.get("communication_style", {}) or {}
             tone = style.get("tone") or ""
