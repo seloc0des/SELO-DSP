@@ -170,7 +170,7 @@ INSTALL_OLLAMA=false
 MODEL_TEMPLATE_NAME="default"
 MODEL_TEMPLATE_DIR="$SCRIPT_DIR/configs/$MODEL_TEMPLATE_NAME"
 MODEL_INSTALL_SCRIPT="$MODEL_TEMPLATE_DIR/install-models.sh"
-DEFAULT_CONVERSATIONAL_MODEL="llama31-8b-steady"
+DEFAULT_CONVERSATIONAL_MODEL="llama31-8b-steady:latest"
 DEFAULT_ANALYTICAL_MODEL="qwen2.5:3b"
 DEFAULT_REFLECTION_MODEL="qwen2.5:3b"
 DEFAULT_EMBEDDING_MODEL="nomic-embed-text"
@@ -247,7 +247,7 @@ else
   export TIER_REFLECTION_WORD_MIN=90
   export TIER_ANALYTICAL_NUM_PREDICT=640
   export TIER_CHAT_NUM_PREDICT=1024
-  export TIER_CHAT_NUM_CTX=8192
+  export TIER_CHAT_NUM_CTX=4096
 fi
 
 # Display tier information
@@ -987,7 +987,7 @@ EOF
       echo "PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:256,expandable_segments:True" >> "$be_env"
     fi
     if ! grep -q '^OLLAMA_GPU_LAYERS=' "$be_env"; then
-      echo "OLLAMA_GPU_LAYERS=-1" >> "$be_env"  # Use all GPU layers
+      echo "OLLAMA_GPU_LAYERS=40" >> "$be_env"  # Stable: 40 layers for 16GB GPU, prevents OOM
     fi
   fi
 
@@ -1425,9 +1425,9 @@ OVREOF
         fi
         
         sudo bash -c "cat >> '$OL_OVERRIDE'" <<OVREOF
-# GPU Configuration - force all layers to GPU (FAISS uses CPU)
+# GPU Configuration - stable 40 layers for 16GB GPU (prevents OOM under load)
 Environment=OLLAMA_NUM_GPU=1
-Environment=OLLAMA_GPU_LAYERS=999
+Environment=OLLAMA_GPU_LAYERS=40
 
 # VRAM Optimization - use maximum available VRAM
 Environment=OLLAMA_MAX_LOADED_MODELS=${max_loaded_models:-3}
@@ -1839,7 +1839,7 @@ export CONVERSATIONAL_MODEL_VAL
         grep -q '^CHAT_TEMPERATURE=' "$SCRIPT_DIR/backend/.env" || echo "CHAT_TEMPERATURE=0.6" >> "$SCRIPT_DIR/backend/.env"
         grep -q '^CHAT_TOP_K=' "$SCRIPT_DIR/backend/.env" || echo "CHAT_TOP_K=40" >> "$SCRIPT_DIR/backend/.env"
         grep -q '^CHAT_TOP_P=' "$SCRIPT_DIR/backend/.env" || echo "CHAT_TOP_P=0.9" >> "$SCRIPT_DIR/backend/.env"
-        grep -q '^CHAT_NUM_CTX=' "$SCRIPT_DIR/backend/.env" || echo "CHAT_NUM_CTX=8192" >> "$SCRIPT_DIR/backend/.env"
+        grep -q '^CHAT_NUM_CTX=' "$SCRIPT_DIR/backend/.env" || echo "CHAT_NUM_CTX=4096" >> "$SCRIPT_DIR/backend/.env"
         # Bounded reflections to match service defaults (consistent with /etc/selo-ai/environment)
         if grep -q '^REFLECTION_NUM_PREDICT=' "$SCRIPT_DIR/backend/.env"; then
           sed -i -E "s|^REFLECTION_NUM_PREDICT=.*|REFLECTION_NUM_PREDICT=640|" "$SCRIPT_DIR/backend/.env" || true
@@ -1853,22 +1853,22 @@ export CONVERSATIONAL_MODEL_VAL
         fi
         grep -q '^PREWARM_MODELS=' "$SCRIPT_DIR/backend/.env" || echo "PREWARM_MODELS=true" >> "$SCRIPT_DIR/backend/.env"
         grep -q '^KEEPALIVE_ENABLED=' "$SCRIPT_DIR/backend/.env" || echo "KEEPALIVE_ENABLED=true" >> "$SCRIPT_DIR/backend/.env"
-        # Keep prewarm enabled but avoid concurrent GPU pressure by limiting residency/parallelism
+        # Stable: Allow 2 concurrent requests (reflection + chat) with limited models loaded
         grep -q '^OLLAMA_MAX_LOADED_MODELS=' "$SCRIPT_DIR/backend/.env" || echo "OLLAMA_MAX_LOADED_MODELS=1" >> "$SCRIPT_DIR/backend/.env"
-        grep -q '^OLLAMA_NUM_PARALLEL=' "$SCRIPT_DIR/backend/.env" || echo "OLLAMA_NUM_PARALLEL=1" >> "$SCRIPT_DIR/backend/.env"
+        grep -q '^OLLAMA_NUM_PARALLEL=' "$SCRIPT_DIR/backend/.env" || echo "OLLAMA_NUM_PARALLEL=2" >> "$SCRIPT_DIR/backend/.env"
         grep -q '^PREWARM_INTERVAL_MIN=' "$SCRIPT_DIR/backend/.env" || echo "PREWARM_INTERVAL_MIN=5" >> "$SCRIPT_DIR/backend/.env"
         # CUDA-related defaults (only add if missing so users can override)
         CPU_THREADS=$( (command -v nproc >/dev/null 2>&1 && nproc) || echo 8 )
         grep -q '^OLLAMA_NUM_THREAD=' "$SCRIPT_DIR/backend/.env" || echo "OLLAMA_NUM_THREAD=${CPU_THREADS}" >> "$SCRIPT_DIR/backend/.env"
         if $CUDA_ENABLED; then
           grep -q '^OLLAMA_NUM_GPU=' "$SCRIPT_DIR/backend/.env" || echo "OLLAMA_NUM_GPU=1" >> "$SCRIPT_DIR/backend/.env"
-          # Prefer lighter default residency to reduce load times/VRAM pressure; users can raise as needed
-          grep -q '^OLLAMA_GPU_LAYERS=' "$SCRIPT_DIR/backend/.env" || echo "OLLAMA_GPU_LAYERS=80" >> "$SCRIPT_DIR/backend/.env"
+          # Stable: 40 layers for 16GB GPU to prevent OOM crashes under load
+          grep -q '^OLLAMA_GPU_LAYERS=' "$SCRIPT_DIR/backend/.env" || echo "OLLAMA_GPU_LAYERS=40" >> "$SCRIPT_DIR/backend/.env"
           # Add CUDA environment variables for GPU acceleration
           grep -q '^CUDA_VISIBLE_DEVICES=' "$SCRIPT_DIR/backend/.env" || echo "CUDA_VISIBLE_DEVICES=0" >> "$SCRIPT_DIR/backend/.env"
           grep -q '^CUDA_DEVICE_ORDER=' "$SCRIPT_DIR/backend/.env" || echo "CUDA_DEVICE_ORDER=PCI_BUS_ID" >> "$SCRIPT_DIR/backend/.env"
-          grep -q '^PYTORCH_CUDA_ALLOC_CONF=' "$SCRIPT_DIR/backend/.env" || echo "PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:256,expandable_segments:True" >> "$SCRIPT_DIR/backend/.env"
-          grep -q '^TORCH_CUDA_MEMORY_FRACTION=' "$SCRIPT_DIR/backend/.env" || echo "TORCH_CUDA_MEMORY_FRACTION=0.8" >> "$SCRIPT_DIR/backend/.env"
+          grep -q '^PYTORCH_CUDA_ALLOC_CONF=' "$SCRIPT_DIR/backend/.env" || echo "PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128,expandable_segments:True" >> "$SCRIPT_DIR/backend/.env"
+          grep -q '^TORCH_CUDA_MEMORY_FRACTION=' "$SCRIPT_DIR/backend/.env" || echo "TORCH_CUDA_MEMORY_FRACTION=0.75" >> "$SCRIPT_DIR/backend/.env"
           grep -q '^CUDA_LAUNCH_BLOCKING=' "$SCRIPT_DIR/backend/.env" || echo "CUDA_LAUNCH_BLOCKING=0" >> "$SCRIPT_DIR/backend/.env"
         else
           grep -q '^OLLAMA_NUM_GPU=' "$SCRIPT_DIR/backend/.env" || echo "OLLAMA_NUM_GPU=0" >> "$SCRIPT_DIR/backend/.env"
@@ -1901,7 +1901,7 @@ export CONVERSATIONAL_MODEL_VAL
         grep -q '^REFLECTION_REQUIRED=' /etc/selo-ai/environment || echo "REFLECTION_REQUIRED=true" | sudo tee -a /etc/selo-ai/environment >/dev/null
         sudo grep -q '^CHAT_TOP_K=' /etc/selo-ai/environment || echo "CHAT_TOP_K=40" | sudo tee -a /etc/selo-ai/environment >/dev/null
         sudo grep -q '^CHAT_TOP_P=' /etc/selo-ai/environment || echo "CHAT_TOP_P=0.9" | sudo tee -a /etc/selo-ai/environment >/dev/null
-        sudo grep -q '^CHAT_NUM_CTX=' /etc/selo-ai/environment || echo "CHAT_NUM_CTX=8192" | sudo tee -a /etc/selo-ai/environment >/dev/null
+        sudo grep -q '^CHAT_NUM_CTX=' /etc/selo-ai/environment || echo "CHAT_NUM_CTX=4096" | sudo tee -a /etc/selo-ai/environment >/dev/null
         if sudo grep -q '^REFLECTION_NUM_PREDICT=' /etc/selo-ai/environment; then
           current_predict=$(sudo awk -F= '/^REFLECTION_NUM_PREDICT=/{print $2; exit}' /etc/selo-ai/environment)
           if [ -z "$current_predict" ] || ! awk -v cur="$current_predict" 'BEGIN{exit(cur >= 640 ? 0 : 1)}'; then
@@ -1917,22 +1917,22 @@ export CONVERSATIONAL_MODEL_VAL
         fi
         grep -q '^PREWARM_MODELS=' /etc/selo-ai/environment || echo "PREWARM_MODELS=true" | sudo tee -a /etc/selo-ai/environment >/dev/null
         grep -q '^KEEPALIVE_ENABLED=' /etc/selo-ai/environment || echo "KEEPALIVE_ENABLED=true" | sudo tee -a /etc/selo-ai/environment >/dev/null
-        # Keep prewarm enabled but constrain concurrency/residency to avoid GPU OOM during startup
+        # Stable: Allow 2 concurrent requests (reflection + chat) with limited models loaded
         grep -q '^OLLAMA_MAX_LOADED_MODELS=' /etc/selo-ai/environment || echo "OLLAMA_MAX_LOADED_MODELS=1" | sudo tee -a /etc/selo-ai/environment >/dev/null
-        grep -q '^OLLAMA_NUM_PARALLEL=' /etc/selo-ai/environment || echo "OLLAMA_NUM_PARALLEL=1" | sudo tee -a /etc/selo-ai/environment >/dev/null
+        grep -q '^OLLAMA_NUM_PARALLEL=' /etc/selo-ai/environment || echo "OLLAMA_NUM_PARALLEL=2" | sudo tee -a /etc/selo-ai/environment >/dev/null
         grep -q '^PREWARM_INTERVAL_MIN=' /etc/selo-ai/environment || echo "PREWARM_INTERVAL_MIN=5" | sudo tee -a /etc/selo-ai/environment >/dev/null
         # CUDA-related defaults (only add if missing so users can override)
         CPU_THREADS=$( (command -v nproc >/dev/null 2>&1 && nproc) || echo 8 )
         grep -q '^OLLAMA_NUM_THREAD=' /etc/selo-ai/environment || echo "OLLAMA_NUM_THREAD=${CPU_THREADS}" | sudo tee -a /etc/selo-ai/environment >/dev/null
         if $CUDA_ENABLED; then
           grep -q '^OLLAMA_NUM_GPU=' /etc/selo-ai/environment || echo "OLLAMA_NUM_GPU=1" | sudo tee -a /etc/selo-ai/environment >/dev/null
-          # Prefer lighter default residency to reduce load times/VRAM pressure; users can raise as needed
-          grep -q '^OLLAMA_GPU_LAYERS=' /etc/selo-ai/environment || echo "OLLAMA_GPU_LAYERS=80" | sudo tee -a /etc/selo-ai/environment >/dev/null
+          # Stable: 40 layers for 16GB GPU to prevent OOM crashes under load
+          grep -q '^OLLAMA_GPU_LAYERS=' /etc/selo-ai/environment || echo "OLLAMA_GPU_LAYERS=40" | sudo tee -a /etc/selo-ai/environment >/dev/null
           # Add CUDA environment variables for GPU acceleration
           grep -q '^CUDA_VISIBLE_DEVICES=' /etc/selo-ai/environment || echo "CUDA_VISIBLE_DEVICES=0" | sudo tee -a /etc/selo-ai/environment >/dev/null
           grep -q '^CUDA_DEVICE_ORDER=' /etc/selo-ai/environment || echo "CUDA_DEVICE_ORDER=PCI_BUS_ID" | sudo tee -a /etc/selo-ai/environment >/dev/null
-          grep -q '^PYTORCH_CUDA_ALLOC_CONF=' /etc/selo-ai/environment || echo "PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:256,expandable_segments:True" | sudo tee -a /etc/selo-ai/environment >/dev/null
-          grep -q '^TORCH_CUDA_MEMORY_FRACTION=' /etc/selo-ai/environment || echo "TORCH_CUDA_MEMORY_FRACTION=0.8" | sudo tee -a /etc/selo-ai/environment >/dev/null
+          grep -q '^PYTORCH_CUDA_ALLOC_CONF=' /etc/selo-ai/environment || echo "PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128,expandable_segments:True" | sudo tee -a /etc/selo-ai/environment >/dev/null
+          grep -q '^TORCH_CUDA_MEMORY_FRACTION=' /etc/selo-ai/environment || echo "TORCH_CUDA_MEMORY_FRACTION=0.75" | sudo tee -a /etc/selo-ai/environment >/dev/null
           grep -q '^CUDA_LAUNCH_BLOCKING=' /etc/selo-ai/environment || echo "CUDA_LAUNCH_BLOCKING=0" | sudo tee -a /etc/selo-ai/environment >/dev/null
         else
           grep -q '^OLLAMA_NUM_GPU=' /etc/selo-ai/environment || echo "OLLAMA_NUM_GPU=0" | sudo tee -a /etc/selo-ai/environment >/dev/null

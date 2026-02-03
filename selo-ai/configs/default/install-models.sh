@@ -62,8 +62,8 @@ pull_model() {
 FAILED_MODELS=()
 
 # 1. Conversational Model (Primary chat interface)
-if ! pull_model "llama3:8b" "Conversational Model (LLaMA 3 8B)"; then
-    FAILED_MODELS+=("llama3:8b")
+if ! pull_model "llama31-8b-steady:latest" "Conversational Model (LLaMA 3.1 8B Steady)"; then
+    FAILED_MODELS+=("llama31-8b-steady:latest")
 fi
 
 # 2. Analytical Model (Structured outputs, persona traits)
@@ -89,10 +89,10 @@ if [ ${#FAILED_MODELS[@]} -eq 0 ]; then
     echo "✓ All models installed successfully!"
     echo ""
     echo "Installed models:"
-    echo "  • llama3:8b          (Conversational)"
-    echo "  • qwen2.5:3b         (Analytical)"
-    echo "  • qwen2.5:3b         (Reflection)"
-    echo "  • nomic-embed-text   (Embeddings)"
+    echo "  • llama31-8b-steady:latest  (Conversational)"
+    echo "  • qwen2.5:3b                (Analytical)"
+    echo "  • qwen2.5:3b                (Reflection)"
+    echo "  • nomic-embed-text          (Embeddings)"
     echo ""
     exit 0
 else
