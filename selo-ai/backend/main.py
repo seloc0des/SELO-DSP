@@ -3764,23 +3764,23 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
         
         # Store assistant message in persistent storage
         processing_time = int((time.time() - start_time) * 1000)  # Convert to milliseconds
-        assistant_message_obj = await conversation_repo.add_message(
-            conversation_id=str(conversation.id),
-            role="assistant",
-            content=clean_response,
-            model_used=chat_request.model,
-            processing_time=processing_time,
-            reflection_triggered=not degraded_mode  # true when reflection-first path
-        )
         assistant_timestamp_iso = response_timestamp
         try:
+            assistant_message_obj = await conversation_repo.add_message(
+                conversation_id=str(conversation.id),
+                role="assistant",
+                content=clean_response,
+                model_used=chat_request.model,
+                processing_time=processing_time,
+                reflection_triggered=not degraded_mode  # true when reflection-first path
+            )
             stored_ts = getattr(assistant_message_obj, "timestamp", None)
             if stored_ts is not None:
                 assistant_timestamp_iso = stored_ts.isoformat()
                 if not assistant_timestamp_iso.endswith("Z"):
                     assistant_timestamp_iso += "Z"
-        except Exception:
-            assistant_timestamp_iso = response_timestamp
+        except Exception as db_err:
+            logger.error(f"Failed to persist assistant message (non-fatal): {db_err}", exc_info=True)
 
         assistant_message = {
             "role": "assistant",
@@ -3859,8 +3859,12 @@ async def chat(chat_request: ChatRequest, background_tasks: BackgroundTasks, req
             )
         
         # Get updated conversation history from persistent storage
-        updated_history = await conversation_repo.get_conversation_history(session_id, limit=50)
-        
+        try:
+            updated_history = await conversation_repo.get_conversation_history(session_id, limit=50)
+        except Exception as hist_err:
+            logger.warning(f"Failed to fetch conversation history (non-fatal): {hist_err}", exc_info=True)
+            updated_history = conversation_history or []
+
         result_payload = {
             "response": assistant_message["content"],
             "history": updated_history,
