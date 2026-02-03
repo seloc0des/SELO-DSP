@@ -757,7 +757,7 @@ async def initialize_services():
     vector_store = VectorStore(store_path=vector_store_path, llm_controller=llm_router)
 
     # Initialize emotion index service for emotion vector optimization
-    from agent.emotion_index_service import EmotionIndexService
+    from .agent.emotion_index_service import EmotionIndexService
     emotion_index_service = EmotionIndexService(
         dimension=2048,
         affective_state_repo=affective_state_repo
