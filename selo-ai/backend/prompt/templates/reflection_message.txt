@@ -9,6 +9,8 @@ AVAILABLE CONTEXT:
 - Recent conversation: {{recent_conversations}}
 - Available memories: {{memories}}
 - Emotions: {{emotions}}
+- Emotion vector cache: {{emotion_vector_cache}}
+- Similar past emotional states: {{similar_emotional_states}}
 - Traits: {{attributes}}
 - Affective state: {{affective_state}}
 - Active goals: {{active_goals}}

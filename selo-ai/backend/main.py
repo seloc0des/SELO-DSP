@@ -756,9 +756,17 @@ async def initialize_services():
     vector_store_path = str(pathlib.Path(__file__).resolve().parent / "data" / "vector_store")
     vector_store = VectorStore(store_path=vector_store_path, llm_controller=llm_router)
 
+    # Initialize emotion index service for emotion vector optimization
+    from agent.emotion_index_service import EmotionIndexService
+    emotion_index_service = EmotionIndexService(
+        dimension=2048,
+        affective_state_repo=affective_state_repo
+    )
+
     affective_state_manager = AffectiveStateManager(
         state_repo=affective_state_repo,
         persona_repo=persona_repo,
+        emotion_index_service=emotion_index_service,
     )
     goal_manager = GoalManager(
         goal_repo=goal_repo,
@@ -917,6 +925,7 @@ async def initialize_services():
         meta_reflection_processor=meta_reflection_processor,
         affective_state_manager=affective_state_manager,
         goal_manager=goal_manager,
+        emotion_index_service=emotion_index_service,
     )
     
     # Get scheduler configuration from environment

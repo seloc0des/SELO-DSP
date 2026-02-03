@@ -12,6 +12,9 @@ import logging
 from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime, timezone, timedelta
 
+from .emotion_vector_cache import EmotionVectorCache
+from .emotion_index_service import EmotionIndexService
+
 logger = logging.getLogger("selo.agent.emotional_depth")
 
 
@@ -56,7 +59,7 @@ class EmotionalDepthEngine:
         "stressed": {"fear": 0.5, "anger": 0.3, "sadness": 0.2},
     }
     
-    def __init__(self, persona_repo, affective_state_repo, memory_repo=None):
+    def __init__(self, persona_repo, affective_state_repo, memory_repo=None, llm_router=None, emotion_index_service=None):
         """
         Initialize the emotional depth engine.
         
@@ -64,10 +67,14 @@ class EmotionalDepthEngine:
             persona_repo: PersonaRepository instance
             affective_state_repo: AffectiveStateRepository instance
             memory_repo: Optional memory repository for emotional memories
+            llm_router: Optional LLM router for embeddings
+            emotion_index_service: Optional emotion index service for optimization
         """
         self.persona_repo = persona_repo
         self.affective_state_repo = affective_state_repo
         self.memory_repo = memory_repo
+        self._emotion_cache = EmotionVectorCache(llm_router=llm_router)
+        self._emotion_index = emotion_index_service
     
     async def process_emotional_experience(
         self,
@@ -446,6 +453,32 @@ class EmotionalDepthEngine:
                     "emotional_depth_version": "1.0"
                 }
             }
+
+            try:
+                # Get previous cache for potential reuse
+                previous_cache = current.get("state_metadata", {}).get("emotion_vector_cache")
+                
+                cache_payload = await self._emotion_cache.build_cache_payload(
+                    emotional_result,
+                    previous_cache=previous_cache
+                )
+                update_data["state_metadata"]["emotion_vector_cache"] = cache_payload
+                
+                # Add to emotion index if available
+                if self._emotion_index and cache_payload.get("vector"):
+                    self._emotion_index.add_vector(
+                        vector=cache_payload["vector"],
+                        signature=cache_payload["signature"],
+                        state_id=current.get("id"),
+                        timestamp=datetime.now(timezone.utc),
+                        core_emotions=emotional_result.get("core_emotions"),
+                        dominant_emotion=emotional_result.get("dominant_emotion"),
+                        energy=current.get("energy"),
+                        stress=current.get("stress"),
+                        confidence=current.get("confidence")
+                    )
+            except Exception as cache_exc:
+                logger.debug("Emotion vector cache update failed: %s", cache_exc)
             
             # Preserve existing fields
             for field in ["energy", "stress", "confidence", "mood_vector", "homeostasis_active"]:

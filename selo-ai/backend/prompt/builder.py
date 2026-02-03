@@ -327,6 +327,33 @@ class PromptBuilder:
         else:
             formatted["emotions"] = "No emotion data available."
 
+        # Cached emotion vector summary
+        emotion_cache = context.get("emotion_vector_cache")
+        if isinstance(emotion_cache, dict) and emotion_cache.get("signature"):
+            cache_bits = [f"- signature: {emotion_cache.get('signature')}"]
+            if emotion_cache.get("model"):
+                cache_bits.append(f"- model: {emotion_cache.get('model')}")
+            if emotion_cache.get("dim"):
+                cache_bits.append(f"- dim: {emotion_cache.get('dim')}")
+            if emotion_cache.get("updated_at"):
+                cache_bits.append(f"- updated_at: {emotion_cache.get('updated_at')}")
+            formatted["emotion_vector_cache"] = "\n".join(cache_bits)
+        else:
+            formatted["emotion_vector_cache"] = "No cached emotion vector available."
+        
+        # Similar emotional states from history
+        similar_states = context.get("similar_emotional_states")
+        if similar_states and isinstance(similar_states, list):
+            state_lines = []
+            for state in similar_states[:3]:
+                sig = state.get("signature", "unknown")
+                sim = state.get("similarity", 0.0)
+                dom = state.get("dominant_emotion", "")
+                state_lines.append(f"- {sig} (similarity: {sim:.2f}, emotion: {dom})")
+            formatted["similar_emotional_states"] = "\n".join(state_lines)
+        else:
+            formatted["similar_emotional_states"] = "No similar past emotional states found."
+
         # Attributes (max 3 entries)
         attributes = context.get("attributes", [])
         if attributes:

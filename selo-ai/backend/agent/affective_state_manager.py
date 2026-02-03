@@ -20,9 +20,11 @@ class AffectiveStateManager:
         self,
         state_repo: AffectiveStateRepository,
         persona_repo: PersonaRepository,
+        emotion_index_service=None,
     ) -> None:
         self._state_repo = state_repo
         self._persona_repo = persona_repo
+        self._emotion_index = emotion_index_service
 
     async def seed_baseline_state(
         self,
@@ -122,6 +124,48 @@ class AffectiveStateManager:
         state = await self._state_repo.upsert_state(updated_payload)
         logger.debug("Updated affective state for persona %s", persona_id)
         return state
+
+    async def apply_emotion_based_adjustment(
+        self,
+        persona_id: str,
+        emotion_vector: list,
+        emotion_signature: str,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Apply fast emotion-based adjustments using emotion index clustering.
+        
+        Args:
+            persona_id: Persona ID
+            emotion_vector: Current emotion vector
+            emotion_signature: Human-readable emotion signature
+            
+        Returns:
+            Updated affective state or None
+        """
+        if not self._emotion_index:
+            return None
+        
+        try:
+            # Get suggested adjustments from emotion index
+            adjustments = self._emotion_index.suggest_adjustments(
+                vector=emotion_vector,
+                signature=emotion_signature
+            )
+            
+            if not adjustments or all(v == 0.0 for v in adjustments.values()):
+                return None
+            
+            # Apply the adjustments
+            adjustment_payload = {
+                "source": "emotion_clustering",
+                **adjustments
+            }
+            
+            return await self.apply_reflection_adjustment(persona_id, adjustment_payload)
+            
+        except Exception as exc:
+            logger.debug("Emotion-based adjustment failed: %s", exc)
+            return None
 
     async def run_homeostasis_decay(self, persona_id: str) -> Optional[Dict[str, Any]]:
         """Gentle decay toward baseline when agent loop runs."""

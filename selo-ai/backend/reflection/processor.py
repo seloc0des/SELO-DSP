@@ -236,7 +236,8 @@ class ReflectionProcessor:
                  meta_reflection_processor: Optional["MetaReflectionProcessor"] = None,
                  affective_state_manager: Optional["AffectiveStateManager"] = None,
                  goal_manager: Optional["GoalManager"] = None,
-                 enable_deferred_embeddings: bool = True):
+                 enable_deferred_embeddings: bool = True,
+                 emotion_index_service=None):
         """
         Initialize the ReflectionProcessor with dependencies.
         
@@ -251,6 +252,7 @@ class ReflectionProcessor:
             vector_store: Vector storage for embeddings
             event_bus: Event bus for publishing reflection events
             socketio_server: Socket.IO server for real-time event broadcasting
+            emotion_index_service: Optional emotion index service for optimization
         """
         self.reflection_repo = reflection_repo
         self.memory_repo = memory_repo
@@ -270,6 +272,7 @@ class ReflectionProcessor:
         self.affective_state_manager = affective_state_manager
         self.goal_manager = goal_manager
         self.enable_deferred_embeddings = enable_deferred_embeddings
+        self.emotion_index_service = emotion_index_service
 
         # Precompile language detection pattern and load reflection config for translation fallbacks
         # Expanded pattern to cover more non-Latin scripts:
@@ -3140,20 +3143,6 @@ Please regenerate your reflection following these identity constraints strictly.
                             "recent_topics": self._extract_topics_from_messages(trimmed_messages[-5:]),  # Last 5 messages
                             "conversation_sentiment": self._analyze_conversation_sentiment(trimmed_messages)
                         }
-                    
-                    # Get persistent memories if available
-                    if user:
-                        memories = await self.conversation_repo.get_memories(
-                            user_id=user.id,
-                            importance_threshold=3,  # Get memories with importance >= 3
-                            limit=max_context_items * 3
-                        )
-                        ranked_memories = self._rank_memories_for_reflection(
-                            memories,
-                            recent_messages=trimmed_messages,
-                            limit=min(MAX_CONTEXT_MEMORIES, max_context_items)
-                        )
-                        context["persistent_memories"] = ranked_memories[:MAX_CONTEXT_MEMORIES]
                         
                 except Exception as e:
                     logger.warning(f"Error gathering conversation context: {str(e)}")
@@ -3233,8 +3222,65 @@ Please regenerate your reflection following these identity constraints strictly.
                                 "mood_vector": affective_state.get("mood_vector", {}),
                                 "last_update": affective_state.get("last_update"),
                             }
+                            state_metadata = affective_state.get("state_metadata") or {}
+                            cache_payload = state_metadata.get("emotion_vector_cache")
+                            if isinstance(cache_payload, dict) and cache_payload.get("signature"):
+                                context["emotion_vector_cache"] = {
+                                    "signature": cache_payload.get("signature"),
+                                    "model": cache_payload.get("model"),
+                                    "dim": cache_payload.get("dim"),
+                                    "updated_at": cache_payload.get("updated_at"),
+                                }
+                                
+                                # Find similar past emotional states using emotion index
+                                if self.emotion_index_service and cache_payload.get("vector"):
+                                    try:
+                                        similar_states = self.emotion_index_service.find_similar_states(
+                                            query_vector=cache_payload["vector"],
+                                            top_k=3,
+                                            threshold=0.7
+                                        )
+                                        if similar_states:
+                                            context["similar_emotional_states"] = [
+                                                {
+                                                    "signature": state["metadata"].get("signature"),
+                                                    "similarity": state["similarity"],
+                                                    "timestamp": state["metadata"].get("timestamp"),
+                                                    "dominant_emotion": state["metadata"].get("dominant_emotion"),
+                                                }
+                                                for state in similar_states
+                                            ]
+                                    except Exception as sim_exc:
+                                        logger.debug("Emotion similarity search failed: %s", sim_exc)
                     except Exception as exc:
                         logger.debug("Unable to gather affective state for persona %s: %s", persona_id, exc)
+
+                    # Get persistent memories with emotion-based weighting (after affective state is available)
+                    try:
+                        if user and self.conversation_repo:
+                            memories = await self.conversation_repo.get_memories(
+                                user_id=user.id,
+                                importance_threshold=3,
+                                limit=max_context_items * 3
+                            )
+                            
+                            # Extract current emotion vector for memory weighting
+                            current_emotion_vec = None
+                            if affective_state:
+                                state_meta = affective_state.get("state_metadata") or {}
+                                cache = state_meta.get("emotion_vector_cache")
+                                if isinstance(cache, dict):
+                                    current_emotion_vec = cache.get("vector")
+                            
+                            ranked_memories = self._rank_memories_for_reflection(
+                                memories,
+                                recent_messages=trimmed_messages,
+                                limit=min(MAX_CONTEXT_MEMORIES, max_context_items),
+                                current_emotion_vector=current_emotion_vec
+                            )
+                            context["persistent_memories"] = ranked_memories[:MAX_CONTEXT_MEMORIES]
+                    except Exception as mem_exc:
+                        logger.debug("Unable to gather memories for persona %s: %s", persona_id, mem_exc)
 
                     try:
                         goals = await self.goal_manager.list_active_goals(persona_id)
@@ -3517,11 +3563,40 @@ Please regenerate your reflection following these identity constraints strictly.
         memories: List[Any],
         recent_messages: Optional[List[Dict[str, Any]]] = None,
         limit: int = 10,
+        current_emotion_vector: Optional[List[float]] = None,
     ) -> List[Dict[str, Any]]:
         """Score and rank memories for inclusion in reflection context."""
         scored: List[tuple[float, Dict[str, Any]]] = []
         recent_text = " ".join([msg.get("content", "").lower() for msg in (recent_messages or [])])
-        for memory in memories or []:
+        
+        # Collect memory emotion vectors for weighting if available
+        memory_vectors = []
+        if current_emotion_vector and self.emotion_index_service:
+            for memory in memories or []:
+                try:
+                    if isinstance(memory, dict):
+                        mem_metadata = memory.get("metadata", {})
+                    else:
+                        mem_metadata = getattr(memory, "metadata", {}) or {}
+                    
+                    mem_vector = mem_metadata.get("emotion_vector") if isinstance(mem_metadata, dict) else None
+                    memory_vectors.append(mem_vector)
+                except Exception:
+                    memory_vectors.append(None)
+            
+            # Get emotion-based weights
+            try:
+                emotion_weights = self.emotion_index_service.get_memory_weights(
+                    current_vector=current_emotion_vector,
+                    memory_vectors=memory_vectors
+                )
+            except Exception as exc:
+                logger.debug("Failed to compute emotion weights: %s", exc)
+                emotion_weights = [1.0] * len(memories or [])
+        else:
+            emotion_weights = [1.0] * len(memories or [])
+        
+        for idx, memory in enumerate(memories or []):
             try:
                 if isinstance(memory, dict):
                     content = memory.get("content", "") or ""
@@ -3550,7 +3625,10 @@ Please regenerate your reflection following these identity constraints strictly.
                 if content and recent_text:
                     overlap_weight = self._compute_overlap_score(content.lower(), recent_text)
 
-                total_score = importance * 0.6 + recency_weight * 0.3 + overlap_weight * 0.1
+                # Apply emotion-based weighting
+                emotion_weight = emotion_weights[idx] if idx < len(emotion_weights) else 1.0
+                
+                total_score = (importance * 0.6 + recency_weight * 0.3 + overlap_weight * 0.1) * emotion_weight
                 scored.append(
                     (
                         total_score,

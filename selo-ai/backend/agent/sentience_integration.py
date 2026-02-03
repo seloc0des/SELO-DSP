@@ -34,7 +34,8 @@ class SentienceIntegration:
         metacognitive_monitor,
         episodic_reconstructor,
         persona_repo,
-        user_repo
+        user_repo,
+        emotion_index_service=None
     ):
         """
         Initialize the sentience integration.
@@ -48,6 +49,7 @@ class SentienceIntegration:
             episodic_reconstructor: EpisodicMemoryReconstructor instance
             persona_repo: PersonaRepository instance
             user_repo: UserRepository instance
+            emotion_index_service: Optional emotion index service for optimization
         """
         self.trait_homeostasis = trait_homeostasis_manager
         self.emotional_depth = emotional_depth_engine
@@ -57,6 +59,7 @@ class SentienceIntegration:
         self.episodic_memory = episodic_reconstructor
         self.persona_repo = persona_repo
         self.user_repo = user_repo
+        self.emotion_index = emotion_index_service
         
         # Track last execution times to avoid over-processing
         self._last_homeostasis = {}

@@ -24,6 +24,7 @@ def initialize_sentience_integration(agent_loop_runner) -> Optional[Any]:
     try:
         from ..persona.trait_homeostasis import TraitHomeostasisManager
         from ..agent.emotional_depth_engine import EmotionalDepthEngine
+        from ..agent.emotion_index_service import EmotionIndexService
         from ..agent.predictive_cognition import PredictiveCognitionEngine
         from ..agent.proactive_initiative import ProactiveInitiativeEngine
         from ..agent.metacognition import MetaCognitiveMonitor
@@ -36,11 +37,20 @@ def initialize_sentience_integration(agent_loop_runner) -> Optional[Any]:
         )
         logger.debug("Initialized TraitHomeostasisManager")
         
+        # Initialize emotion index service
+        emotion_index = EmotionIndexService(
+            dimension=2048,
+            affective_state_repo=agent_loop_runner._affective_state_manager._state_repo
+        )
+        logger.debug("Initialized EmotionIndexService")
+        
         # Initialize emotional depth engine
         emotional_depth = EmotionalDepthEngine(
             persona_repo=agent_loop_runner._persona_repo,
             affective_state_repo=agent_loop_runner._affective_state_manager._state_repo,
-            memory_repo=None  # Optional
+            memory_repo=None,  # Optional
+            llm_router=agent_loop_runner._llm_router,
+            emotion_index_service=emotion_index,
         )
         logger.debug("Initialized EmotionalDepthEngine")
         
@@ -109,7 +119,8 @@ def initialize_sentience_integration(agent_loop_runner) -> Optional[Any]:
             metacognitive_monitor=metacognition,
             episodic_reconstructor=episodic_reconstructor,
             persona_repo=agent_loop_runner._persona_repo,
-            user_repo=agent_loop_runner._user_repo
+            user_repo=agent_loop_runner._user_repo,
+            emotion_index_service=emotion_index,
         )
         
         logger.info("Sentience integration initialized with all available systems")
